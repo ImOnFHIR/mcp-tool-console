@@ -46,6 +46,9 @@ const choicesOf = (s?: Schema): Choice[] | null => {
 };
 const typeOf = (s: Schema) => (Array.isArray(s.type) ? s.type.find((t) => t !== "null") : s.type);
 
+/** Bounds come from a tool's schema and go into HTML attributes, so only real numbers count. */
+const finite = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+
 export function widgetFor(s: Schema): Widget {
   const t = typeOf(s);
   if (t === "array") {
@@ -56,7 +59,7 @@ export function widgetFor(s: Schema): Widget {
   if (c) return { kind: "select", choices: c };
   if (t === "integer" || t === "number") {
     const integer = t === "integer";
-    return s.minimum !== undefined && s.maximum !== undefined
+    return finite(s.minimum) && finite(s.maximum)
       ? { kind: "range", min: s.minimum, max: s.maximum, integer }
       : { kind: "number", integer };
   }

@@ -248,8 +248,9 @@ function problems(p: string[]) {
 async function run(server: ServerInfo, t: Tool, args: Record<string, unknown>) {
   if (busy) return;
   problems([]);
-  const confirmCost =
-    (document.getElementById("confirm-cost") as HTMLInputElement | null)?.checked === true;
+  const costBox = document.getElementById("confirm-cost") as HTMLInputElement | null;
+  const confirmCost = costBox?.checked === true;
+  if (costBox) costBox.checked = false; // each run that may cost money needs its own tick
   const callId = crypto.randomUUID();
   const started = Date.now();
   const status = $("#run-status");

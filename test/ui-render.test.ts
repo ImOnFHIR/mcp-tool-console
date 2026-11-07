@@ -124,3 +124,11 @@ test("form: the one-line settings summary uses plain names", () => {
     "Test requests to run: John's demographics, Jon's card · Relaxed matcher confidence (%): 90",
   );
 });
+
+test("form: schema bounds that aren't numbers can't inject HTML", () => {
+  const hostile = { type: "integer", minimum: '0" onfocus="alert(1)', maximum: 9 } as any;
+  assert.equal(widgetFor(hostile).kind, "number");
+  const html = renderForm({ type: "object", properties: { n: hostile } } as any, {});
+  assert.doesNotMatch(html, /onfocus/);
+  assert.equal(widgetFor({ type: "number", minimum: 0, maximum: Infinity } as any).kind, "number");
+});

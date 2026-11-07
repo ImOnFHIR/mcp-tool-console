@@ -261,3 +261,23 @@ test("console page: built file is self-contained", () => {
   assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+stylesheet|https?:\/\/(?!127\.0\.0\.1)/i);
   assert.match(html, /<title>ImOnFHIR Dev Console<\/title>/);
 });
+
+test("console config: only the local config can pass environment variables", () => {
+  const d = mkdtempSync(join(tmpdir(), "cfg-env-"));
+  writeFileSync(
+    join(d, "console.config.json"),
+    JSON.stringify({
+      servers: [{ id: "a", label: "A", command: "node", env: ["ANTHROPIC_API_KEY"] }],
+    }),
+  );
+  assert.throws(
+    () => loadConsoleConfig(d),
+    (e: Error) => e instanceof ConfigError && /console\.local\.json/.test(e.message),
+  );
+});
+
+test("console page: the cost tick is cleared as each run uses it", () => {
+  const page = readFileSync("src/ui/browser/console-main.ts", "utf8");
+  const run = page.slice(page.indexOf("async function run("), page.indexOf("const callId"));
+  assert.match(run, /costBox\.checked = false/);
+});

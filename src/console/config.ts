@@ -47,6 +47,11 @@ function parse(file: string, local: boolean): ServerConfig[] {
       env.some((e: unknown) => typeof e !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(e as string))
     )
       throw new ConfigError(`${where}: env must be a list of variable names`);
+    // Passing a variable (an API key, say) is a choice for this machine, never for a committed file.
+    if (!local && env.length)
+      throw new ConfigError(
+        `${where}: the committed config can't pass environment variables (name them in console.local.json)`,
+      );
     return {
       id: s.id,
       label: s.label,
