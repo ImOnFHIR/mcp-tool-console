@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Check: build + test", "type": "shell", "command": "npm test", "group": { "kind": "test", "isDefault": true }, "problemMatcher": ["$tsc"] },
+    { "label": "Check: format + lint", "type": "shell", "command": "npm run format:check && npm run lint", "problemMatcher": [] },
+    { "label": "Format: write", "type": "shell", "command": "npm run format", "problemMatcher": [] },
+    { "label": "Build", "type": "shell", "command": "npm run ui:build", "group": { "kind": "build", "isDefault": true }, "problemMatcher": ["$tsc"] },
+    { "label": "Preview: dev console (sample tools)", "type": "shell", "command": "npm test >/dev/null && npm run console", "isBackground": true, "problemMatcher": [], "presentation": { "panel": "dedicated", "reveal": "always" } },
+    { "label": "Codex: review diff", "type": "shell", "command": "codex review", "problemMatcher": [], "presentation": { "panel": "dedicated", "reveal": "always" } }
+  ]
+}

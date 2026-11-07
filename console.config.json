@@ -1,0 +1,13 @@
+{
+  "$comment": "Servers the dev console starts when you run it in this repo: sample tools for trying the console (built by npm test). Relative paths only; machine paths go in console.local.json, which is gitignored.",
+  "servers": [
+    {
+      "id": "samples",
+      "label": "Sample tools",
+      "command": "node",
+      "args": ["dist/test/helpers/fake-mcp.js"],
+      "cwd": ".",
+      "timeoutSeconds": 10
+    }
+  ]
+}

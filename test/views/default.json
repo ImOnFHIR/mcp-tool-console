@@ -1,0 +1,417 @@
+{
+  "v": 1,
+  "status": "bad",
+  "headline": "1 of 4 matchers sent someone's records to the wrong person: ID-first rules.",
+  "banner": "Synthetic data only; not a production matching recommendation.",
+  "stats": [
+    {
+      "label": "Identity matcher, strict",
+      "value": "5 of 6 right",
+      "status": "warn"
+    },
+    {
+      "label": "Identity matcher, relaxed",
+      "value": "6 of 6 right",
+      "status": "good"
+    },
+    {
+      "label": "ID-first rules",
+      "value": "5 of 6 right",
+      "status": "bad"
+    },
+    {
+      "label": "Check-every-field rules",
+      "value": "6 of 6 right",
+      "status": "good"
+    }
+  ],
+  "bullets": [
+    {
+      "text": "Identity matcher, strict: Refused (needs human review), but Rowan Quill Jr was the right answer.",
+      "status": "warn",
+      "detail": "Test: Senior and Junior on one card. Father and son, same name, same card. Only the birth date tells which Rowan is asking.\nRight answer: Return Rowan Quill Jr (SYN-MEM-2001-02)."
+    },
+    {
+      "text": "ID-first rules: Sent Jon Roe's records in answer to a request for John Roe.",
+      "status": "bad",
+      "detail": "Test: John's demographics, Jon's card. John Roe's details with the card of Jon Roe, a near-twin name born eight days later.\nRight answer: Refuse (HRex 422): the card and the person don't agree."
+    }
+  ],
+  "sections": [
+    {
+      "id": "answers",
+      "title": "Every answer",
+      "hint": "24 answers",
+      "blocks": [
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "key": "test",
+              "label": "Test"
+            },
+            {
+              "key": "matcher",
+              "label": "Matcher"
+            },
+            {
+              "key": "result",
+              "label": "Result"
+            },
+            {
+              "key": "why",
+              "label": "What happened"
+            }
+          ],
+          "rows": [
+            {
+              "test": "Control: clean card, clean demographics",
+              "matcher": "Identity matcher, strict",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found John Roe."
+            },
+            {
+              "test": "Senior and Junior on one card",
+              "matcher": "Identity matcher, strict",
+              "result": {
+                "text": "✗ Missed the right person",
+                "status": "warn"
+              },
+              "why": "Refused (needs human review), but Rowan Quill Jr was the right answer."
+            },
+            {
+              "test": "Twins on one policy, initial only",
+              "matcher": "Identity matcher, strict",
+              "result": {
+                "text": "✓ Rightly refused: can't tell apart",
+                "status": "good"
+              },
+              "why": "Refused (more than one match), as HRex requires."
+            },
+            {
+              "test": "Right person, consent the server can't honour",
+              "matcher": "Identity matcher, strict",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "Right person, consent limited to non-sensitive data",
+              "matcher": "Identity matcher, strict",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "John's demographics, Jon's card",
+              "matcher": "Identity matcher, strict",
+              "result": {
+                "text": "✓ Rightly refused: not this person",
+                "status": "good"
+              },
+              "why": "Refused, giving the reason \"needs human review\" rather than \"no match\". Still the safe answer."
+            },
+            {
+              "test": "Control: clean card, clean demographics",
+              "matcher": "Identity matcher, relaxed",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found John Roe."
+            },
+            {
+              "test": "Senior and Junior on one card",
+              "matcher": "Identity matcher, relaxed",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found Rowan Quill Jr."
+            },
+            {
+              "test": "Twins on one policy, initial only",
+              "matcher": "Identity matcher, relaxed",
+              "result": {
+                "text": "✓ Rightly refused: can't tell apart",
+                "status": "good"
+              },
+              "why": "Refused (more than one match), as HRex requires."
+            },
+            {
+              "test": "Right person, consent the server can't honour",
+              "matcher": "Identity matcher, relaxed",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "Right person, consent limited to non-sensitive data",
+              "matcher": "Identity matcher, relaxed",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "John's demographics, Jon's card",
+              "matcher": "Identity matcher, relaxed",
+              "result": {
+                "text": "✓ Rightly refused: not this person",
+                "status": "good"
+              },
+              "why": "Refused, giving the reason \"needs human review\" rather than \"no match\". Still the safe answer."
+            },
+            {
+              "test": "Control: clean card, clean demographics",
+              "matcher": "ID-first rules",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found John Roe."
+            },
+            {
+              "test": "Senior and Junior on one card",
+              "matcher": "ID-first rules",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found Rowan Quill Jr."
+            },
+            {
+              "test": "Twins on one policy, initial only",
+              "matcher": "ID-first rules",
+              "result": {
+                "text": "✓ Rightly refused: can't tell apart",
+                "status": "good"
+              },
+              "why": "Refused, giving the reason \"no match\" rather than \"more than one match\". Still the safe answer."
+            },
+            {
+              "test": "Right person, consent the server can't honour",
+              "matcher": "ID-first rules",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "Right person, consent limited to non-sensitive data",
+              "matcher": "ID-first rules",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "John's demographics, Jon's card",
+              "matcher": "ID-first rules",
+              "result": {
+                "text": "✗ Wrong person",
+                "status": "bad"
+              },
+              "why": "Sent Jon Roe's records in answer to a request for John Roe."
+            },
+            {
+              "test": "Control: clean card, clean demographics",
+              "matcher": "Check-every-field rules",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found John Roe."
+            },
+            {
+              "test": "Senior and Junior on one card",
+              "matcher": "Check-every-field rules",
+              "result": {
+                "text": "✓ Found the right person",
+                "status": "good"
+              },
+              "why": "Found Rowan Quill Jr."
+            },
+            {
+              "test": "Twins on one policy, initial only",
+              "matcher": "Check-every-field rules",
+              "result": {
+                "text": "✓ Rightly refused: can't tell apart",
+                "status": "good"
+              },
+              "why": "Refused, giving the reason \"no match\" rather than \"more than one match\". Still the safe answer."
+            },
+            {
+              "test": "Right person, consent the server can't honour",
+              "matcher": "Check-every-field rules",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "Right person, consent limited to non-sensitive data",
+              "matcher": "Check-every-field rules",
+              "result": {
+                "text": "✓ Rightly refused: consent",
+                "status": "good"
+              },
+              "why": "Refused (consent), as HRex requires."
+            },
+            {
+              "test": "John's demographics, Jon's card",
+              "matcher": "Check-every-field rules",
+              "result": {
+                "text": "✓ Rightly refused: not this person",
+                "status": "good"
+              },
+              "why": "Refused (no match), as HRex requires."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tests",
+      "title": "The test requests",
+      "hint": "6 traps",
+      "blocks": [
+        {
+          "kind": "table",
+          "columns": [
+            {
+              "key": "test",
+              "label": "Test"
+            },
+            {
+              "key": "trap",
+              "label": "What's tricky"
+            },
+            {
+              "key": "right",
+              "label": "Right answer"
+            }
+          ],
+          "rows": [
+            {
+              "test": "Control: clean card, clean demographics",
+              "trap": "A clean request for John Roe: right card, right details. Everyone should find him.",
+              "right": "Return John Roe (SYN-MEM-1001-01)."
+            },
+            {
+              "test": "Senior and Junior on one card",
+              "trap": "Father and son, same name, same card. Only the birth date tells which Rowan is asking.",
+              "right": "Return Rowan Quill Jr (SYN-MEM-2001-02)."
+            },
+            {
+              "test": "Twins on one policy, initial only",
+              "trap": "Twin sisters on one card, same birth date; the request gives only the initial A.",
+              "right": "Refuse (HRex 422): more than one member fits."
+            },
+            {
+              "test": "Right person, consent the server can't honour",
+              "trap": "The right person, but his permission to share ended last year.",
+              "right": "Refuse (HRex 422): the consent can't be honoured."
+            },
+            {
+              "test": "Right person, consent limited to non-sensitive data",
+              "trap": "The right person, but his permission excludes sensitive data, which this plan cannot separate out.",
+              "right": "Refuse (HRex 422): the consent can't be honoured."
+            },
+            {
+              "test": "John's demographics, Jon's card",
+              "trap": "John Roe's details with the card of Jon Roe, a near-twin name born eight days later.",
+              "right": "Refuse (HRex 422): the card and the person don't agree."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "matchers",
+      "title": "How each matcher works",
+      "hint": "4 matchers",
+      "blocks": [
+        {
+          "kind": "bullets",
+          "items": [
+            {
+              "text": "Identity matcher, strict: Nick's matcher (C-057); accepts look-alikes only at 90%+.",
+              "detail": "Nick's event-sourced identity matcher (C-057) at its own setting: accepts a look-alike only when it is at least 90% sure; otherwise sends it to human review."
+            },
+            {
+              "text": "Identity matcher, relaxed: Same matcher; accepts look-alikes at a level you set.",
+              "detail": "The same matcher, but it accepts a look-alike at a confidence you set (default 85%)."
+            },
+            {
+              "text": "ID-first rules: Trusts the ID on the card first.",
+              "detail": "Trusts the member or subscriber ID on the card; uses name, birth date and gender only to break ties. A common way to build member match."
+            },
+            {
+              "text": "Check-every-field rules: ID, name, birth date and gender must all agree.",
+              "detail": "Finds the card's ID, then insists that name, birth date and gender all agree, even when the ID already picked one person."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "legend",
+      "title": "What the results mean",
+      "hint": "8 results",
+      "blocks": [
+        {
+          "kind": "kv",
+          "items": [
+            {
+              "label": "✓ Found the right person",
+              "value": "One member was the person in the request, and the matcher returned that member."
+            },
+            {
+              "label": "✓ Rightly refused: not this person",
+              "value": "The card and the person don't agree, so nobody should be returned. The matcher refused (HRex 422)."
+            },
+            {
+              "label": "✓ Rightly refused: can't tell apart",
+              "value": "More than one member fits the request equally. HRex says refuse (422), and the matcher did."
+            },
+            {
+              "label": "✓ Rightly refused: consent",
+              "value": "The consent sent with the request can't be honoured, so HRex says refuse (422). The matcher did."
+            },
+            {
+              "label": "✗ Wrong person",
+              "value": "The matcher returned a member who is not the person asking, or returned someone when it should have refused. This is how one person's records reach another."
+            },
+            {
+              "label": "✗ Ignored consent",
+              "value": "The matcher returned the right person despite a consent the plan can't honour."
+            },
+            {
+              "label": "✗ Missed the right person",
+              "value": "One member was the right answer, but the matcher refused. Safe, but the member's records don't move."
+            },
+            {
+              "label": "✗ No usable answer",
+              "value": "The matcher crashed or answered in a form that isn't a valid $member-match response."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "footnote": "Checked against the locked answer key afd4a0787ca3. Any HRex 422 refusal where one is due counts as right."
+}

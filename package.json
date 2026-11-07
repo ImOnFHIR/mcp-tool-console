@@ -1,0 +1,53 @@
+{
+  "name": "mcp-tool-console",
+  "version": "0.1.0",
+  "description": "One way to describe an MCP tool so people and AI can both use it: a tool contract, a result view (ToolView v1), a renderer, and a local dev console.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ImOnFHIR/mcp-tool-console.git"
+  },
+  "bin": {
+    "mcp-tool-console": "dist/src/console/cli.js"
+  },
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./render": "./dist/src/ui/render.js",
+    "./form": "./dist/src/ui/form.js",
+    "./styles": "./dist/src/ui/styles.js",
+    "./console": "./dist/src/console/index.js",
+    "./tool-view.schema.json": "./docs/tool-view.schema.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/src",
+    "dist/ui",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "ui:build": "npm run -s build && tsc -p tsconfig.ui.json && node scripts/ui-build.mjs",
+    "prepare": "npm run -s ui:build",
+    "test": "node scripts/test.mjs",
+    "console": "npm run -s ui:build && node dist/src/console/cli.js",
+    "format": "prettier --write \"**/*.{ts,mts,cts,js,mjs,cjs}\"",
+    "format:check": "prettier --check \"**/*.{ts,mts,cts,js,mjs,cjs}\"",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "oxlint": "1.92.0",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "zod": "4.6.7"
+  }
+}

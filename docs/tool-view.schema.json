@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imonfhir.com/ns/tool-view/v1.schema.json",
+  "title": "ToolView v1",
+  "description": "A result view any MCP tool can return in result _meta[\"com.imonfhir/view\"]. Source of truth: src/ui/view.ts.",
+  "type": "object",
+  "required": ["v", "status", "headline"],
+  "$defs": {
+    "status": { "enum": ["good", "bad", "warn", "info", "error"] },
+    "bullet": {
+      "type": "object",
+      "required": ["text"],
+      "properties": { "text": { "type": "string", "maxLength": 110 }, "status": { "$ref": "#/$defs/status" }, "detail": { "type": "string" } }
+    },
+    "cell": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "status": { "$ref": "#/$defs/status" }, "mono": { "type": "boolean" } } }
+      ]
+    },
+    "block": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": { "kind": { "type": "string", "description": "bullets | table | kv | text | code; unknown kinds render as code" } }
+    }
+  },
+  "properties": {
+    "v": { "const": 1 },
+    "status": { "$ref": "#/$defs/status" },
+    "headline": { "type": "string", "description": "One sentence." },
+    "banner": { "type": "string" },
+    "stats": { "type": "array", "items": { "type": "object", "required": ["label", "value"], "properties": { "label": { "type": "string" }, "value": { "type": "string" }, "status": { "$ref": "#/$defs/status" } } } },
+    "bullets": { "type": "array", "items": { "$ref": "#/$defs/bullet" } },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "blocks"],
+        "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "hint": { "type": "string" }, "open": { "type": "boolean" }, "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } } }
+      }
+    },
+    "next": { "type": "array", "items": { "type": "object", "required": ["label", "patch"], "properties": { "label": { "type": "string" }, "patch": { "type": "object" } } } },
+    "footnote": { "type": "string" }
+  }
+}

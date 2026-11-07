@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "openai.chatgpt",
+    "esbenp.prettier-vscode",
+    "oxc.oxc-vscode",
+    "usernamehw.errorlens",
+    "yoavbls.pretty-ts-errors"
+  ]
+}

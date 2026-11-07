@@ -1,0 +1,7 @@
+# Prettier formats code only. Data and docs are left alone.
+node_modules/
+dist/
+docs/
+*.md
+*.json
+*.html

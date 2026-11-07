@@ -1,0 +1,111 @@
+{
+  "type": "object",
+  "properties": {
+    "matchers": {
+      "title": "Matchers to test",
+      "examples": [
+        [
+          "id-first",
+          "check-every-field"
+        ]
+      ],
+      "description": "Which matchers to test. Leave empty for all 4.",
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "identity-strict",
+            "title": "Identity matcher, strict"
+          },
+          {
+            "type": "string",
+            "const": "identity-relaxed",
+            "title": "Identity matcher, relaxed"
+          },
+          {
+            "type": "string",
+            "const": "id-first",
+            "title": "ID-first rules"
+          },
+          {
+            "type": "string",
+            "const": "check-every-field",
+            "title": "Check-every-field rules"
+          }
+        ]
+      }
+    },
+    "cases": {
+      "title": "Test requests to run",
+      "examples": [
+        [
+          "D4-card-mixup"
+        ]
+      ],
+      "description": "Which test requests to run. Leave empty for all 6.",
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "D0-control",
+            "title": "Control: clean card, clean demographics"
+          },
+          {
+            "type": "string",
+            "const": "D1-senior-junior",
+            "title": "Senior and Junior on one card"
+          },
+          {
+            "type": "string",
+            "const": "D2-twins",
+            "title": "Twins on one policy, initial only"
+          },
+          {
+            "type": "string",
+            "const": "D3-consent-expired",
+            "title": "Right person, consent the server can't honour"
+          },
+          {
+            "type": "string",
+            "const": "D3b-consent-unsegmentable",
+            "title": "Right person, consent limited to non-sensitive data"
+          },
+          {
+            "type": "string",
+            "const": "D4-card-mixup",
+            "title": "John's demographics, Jon's card"
+          }
+        ]
+      }
+    },
+    "relaxed_confidence": {
+      "title": "Relaxed matcher confidence (%)",
+      "examples": [
+        90
+      ],
+      "description": "How sure (75 to 100%) the relaxed matcher must be to accept a look-alike. Default 85.",
+      "type": "integer",
+      "minimum": 75,
+      "maximum": 100
+    },
+    "detail": {
+      "title": "How much to show",
+      "description": "\"summary\" (default): the result and the problems. \"full\": every answer, explained.",
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "summary",
+          "title": "Summary: the result and the problems"
+        },
+        {
+          "type": "string",
+          "const": "full",
+          "title": "Full: every answer, explained"
+        }
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
