@@ -3,7 +3,18 @@
  * Every string from a tool passes through esc(); nothing from a result is ever inserted raw.
  * Pure: no DOM, testable in Node.
  */
-import type { Block, Bullet, Cell, Status, ToolView } from "./view.js";
+import {
+  STATUSES,
+  type Block,
+  type Bullet,
+  type Cell,
+  type Status,
+  type ToolView,
+} from "./view.js";
+
+/** A status from a tool becomes part of a class name, so only the five known values pass. */
+const known = (s: unknown): Status | undefined =>
+  (STATUSES as readonly unknown[]).includes(s) ? (s as Status) : undefined;
 
 export const esc = (s: unknown) =>
   String(s ?? "").replace(
@@ -21,16 +32,19 @@ export const STATUS_WORD: Record<Status, string> = {
 };
 const MARK: Record<Status, string> = { good: "✓", bad: "✗", warn: "!", info: "i", error: "✗" };
 
-const pill = (s?: Status) =>
-  s
+const pill = (raw?: Status) => {
+  const s = known(raw);
+  return s
     ? `<span class="tv-pill tv-${s}"><span aria-hidden="true">${MARK[s]}</span> ${STATUS_WORD[s]}</span>`
     : "";
+};
 
 function bullets(items: Bullet[]): string {
   return `<ul class="tv-bullets">${items
     .map((b) => {
-      const mark = b.status
-        ? `<span class="tv-mark tv-${b.status}" aria-label="${esc(STATUS_WORD[b.status])}">${MARK[b.status]}</span>`
+      const st = known(b.status);
+      const mark = st
+        ? `<span class="tv-mark tv-${st}" aria-label="${esc(STATUS_WORD[st])}">${MARK[st]}</span>`
         : `<span class="tv-mark" aria-hidden="true">•</span>`;
       return b.detail
         ? `<li>${mark}<details class="tv-more"><summary>${esc(b.text)}</summary><p class="tv-detail">${esc(b.detail).replace(/\n/g, "<br>")}</p></details></li>`
@@ -42,7 +56,8 @@ function bullets(items: Bullet[]): string {
 const cellText = (c: Cell) => (typeof c === "string" ? c : c.text);
 const cellHtml = (c: Cell) => {
   if (typeof c === "string") return esc(c);
-  const cls = [c.status ? `tv-${c.status}` : "", c.mono ? "tv-mono" : ""].filter(Boolean).join(" ");
+  const st = known(c.status);
+  const cls = [st ? `tv-${st}` : "", c.mono ? "tv-mono" : ""].filter(Boolean).join(" ");
   return cls ? `<span class="${cls}">${esc(c.text)}</span>` : esc(c.text);
 };
 
@@ -88,7 +103,13 @@ export function renderView(v: ToolView, o: RenderOptions = {}): string {
   if (v.banner) parts.push(`<p class="tv-banner">${esc(v.banner)}</p>`);
   if (v.stats?.length)
     parts.push(
-      `<ul class="tv-stats">${v.stats.map((s) => `<li class="tv-stat${s.status ? ` tv-${s.status}` : ""}"><span class="tv-stat-label">${esc(s.label)}</span><span class="tv-stat-value">${esc(s.value)}</span>${s.status && s.status !== "good" ? `<span class="tv-stat-word">${esc(STATUS_WORD[s.status])}</span>` : ""}</li>`).join("")}</ul>`,
+      `<ul class="tv-stats">${v.stats
+        .map((s) => [s, known(s.status)] as const)
+        .map(
+          ([s, st]) =>
+            `<li class="tv-stat${st ? ` tv-${st}` : ""}"><span class="tv-stat-label">${esc(s.label)}</span><span class="tv-stat-value">${esc(s.value)}</span>${st && st !== "good" ? `<span class="tv-stat-word">${esc(STATUS_WORD[st])}</span>` : ""}</li>`,
+        )
+        .join("")}</ul>`,
     );
   if (v.bullets?.length) parts.push(bullets(v.bullets));
   for (const s of v.sections ?? []) {

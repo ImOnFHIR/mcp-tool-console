@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { renderView, requiredText, esc } from "../src/ui/render.js";
 import { renderForm, formToArgs, widgetFor, argsSummary } from "../src/ui/form.js";
-import type { ToolView } from "../src/ui/view.js";
+import { checkView, type ToolView } from "../src/ui/view.js";
 
 const views = readdirSync("test/views").map(
   (f) => [f, JSON.parse(readFileSync(`test/views/${f}`, "utf8")) as ToolView] as const,
@@ -131,4 +131,33 @@ test("form: schema bounds that aren't numbers can't inject HTML", () => {
   const html = renderForm({ type: "object", properties: { n: hostile } } as any, {});
   assert.doesNotMatch(html, /onfocus/);
   assert.equal(widgetFor({ type: "number", minimum: 0, maximum: Infinity } as any).kind, "number");
+});
+
+test("render: a status that isn't one of the five can't inject HTML anywhere", () => {
+  const bad = '"><img src=x onerror=alert(1)>' as any;
+  const v = {
+    v: 1,
+    status: "bad",
+    headline: "h",
+    stats: [{ label: "s", value: "1", status: bad }],
+    bullets: [{ text: "b", status: bad }],
+    sections: [
+      {
+        id: "t",
+        title: "T",
+        blocks: [
+          {
+            kind: "table",
+            columns: [{ key: "a", label: "A" }],
+            rows: [{ a: { text: "x", status: bad } }],
+          },
+        ],
+      },
+    ],
+  } as ToolView;
+  assert.doesNotMatch(renderView(v), /onerror|<img/);
+  const problems = checkView(v).join("\n");
+  assert.match(problems, /rows\[0\]\.a: status must be one of/);
+  assert.match(problems, /stats\[0\]: status/);
+  assert.match(problems, /bullets\[0\]: status/);
 });

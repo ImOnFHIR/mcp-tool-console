@@ -102,6 +102,10 @@ export function checkView(v: unknown): string[] {
         if (!Array.isArray(b.rows)) p.push(`${bw} needs rows`);
         else if (b.rows.length > LIMITS.tableRows)
           p.push(`${bw} has ${b.rows.length} rows; cut to ${LIMITS.tableRows} and add a note`);
+        if (Array.isArray(b.rows))
+          for (const [r, row] of b.rows.entries())
+            for (const [k, c] of Object.entries(isObj(row) ? row : {}))
+              if (isObj(c)) status(c.status, `${bw}.rows[${r}].${k}`);
       } else if (b?.kind === "kv") {
         if (!Array.isArray(b.items)) p.push(`${bw} needs items`);
       } else if (b?.kind === "text" || b?.kind === "code") {
