@@ -22,9 +22,10 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { loadConsoleConfig, type ServerConfig } from "./console/config.js";
 import { Hub } from "./console/hub.js";
+import { isCatalogId, isCatalogToolDir } from "./console/catalog.js";
 import { isFree } from "./console/http.js";
 import { META } from "./tool-meta.js";
 import { checkView } from "./ui/view.js";
@@ -43,20 +44,20 @@ export interface BuiltPackage {
   skipped: { preset: string; reason: string }[];
 }
 
-const SAFE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 /** Names Windows refuses as a file name, with or without an extension. */
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 
-/** Leaves room for the ".json" a name gets, under the 255-character limit most disks have. */
-const MAX_NAME = 100;
-
-/** A name safe to use as a file or folder name on any disk (plain characters, short, no trailing dot, not reserved). */
+/**
+ * A name safe to use as a file or folder name on any disk: the catalog's own tool-folder rule (plain
+ * characters, up to 100), plus no trailing dot and not a Windows reserved name. The catalog's rule is
+ * the one that decides whether a package can be read, so it is imported, not copied.
+ */
 export const isSafeName = (n: unknown): n is string =>
-  typeof n === "string" &&
-  n.length <= MAX_NAME &&
-  SAFE.test(n) &&
-  !n.endsWith(".") &&
-  !WINDOWS_RESERVED.test(n.split(".")[0]);
+  isCatalogToolDir(n) && !n.endsWith(".") && !WINDOWS_RESERVED.test(n.split(".")[0]);
+
+/** A package folder's name: the catalog's id rule, and not a Windows reserved name. */
+export const isPackageFolder = (n: unknown): n is string =>
+  isCatalogId(n) && !WINDOWS_RESERVED.test(n);
 
 const RUN_KEYS = [
   "args",
@@ -358,10 +359,13 @@ export async function runPackageCommand(argv: string[], cwd: string): Promise<nu
     for (const s of picked) {
       const pkg = await buildPackage(s, { runs });
       const direct = Boolean(opt.server && opt.out);
-      if (!direct && !isSafeName(s.id))
-        throw new PackageError(`server id "${s.id}" can't be used as a folder name on every disk`);
-      const out = direct ? opt.out! : join(opt.out ?? "package", s.id);
-      built.push({ out: resolve(cwd, out), pkg });
+      const out = resolve(cwd, direct ? opt.out! : join(opt.out ?? "package", s.id));
+      // The hosted catalog reads <folder>/<id>/ and skips any id outside its pattern.
+      if (!isPackageFolder(basename(out)))
+        throw new PackageError(
+          `package folder "${basename(out)}" must be 1 to 40 characters: lowercase letters, digits and dashes, starting with a letter or digit, and not a Windows reserved name (the console's catalog won't read any other)`,
+        );
+      built.push({ out, pkg });
     }
     // A recording carries no server id: if two packaged servers both have its tool, whose is it?
     for (const r of runs) {

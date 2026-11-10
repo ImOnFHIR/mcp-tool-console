@@ -18,6 +18,16 @@ export interface ServerConfig {
   env: string[];
   /** Per-call time limit in seconds (default 60). */
   timeoutSeconds: number;
+  /**
+   * Hosted mode only: reach one MCP server over Streamable HTTP instead of starting a command.
+   * Never set by the config files; `command` is empty when this is present.
+   */
+  upstream?: {
+    url: string;
+    headers: Record<string, string>;
+    /** Test seam: the fetch the transport uses. */
+    fetch?: typeof fetch;
+  };
 }
 
 export class ConfigError extends Error {}

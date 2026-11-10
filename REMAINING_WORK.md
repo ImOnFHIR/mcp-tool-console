@@ -19,6 +19,26 @@ Remaining:
 
 Tests: `npm test` 66/66 (47 before, plus 19 in `test/package.test.ts`). Each control was removed to confirm its test goes red.
 
+## Hosted mode
+The console can run in a container behind Cloudflare Access as an MCP client of one upstream portal (README, "Hosted mode"). Laptop mode is unchanged.
+
+Done:
+- `CONSOLE_MODE=hosted`; configuration from `CONSOLE_*` variables only; refuses to start with any of them missing or wrong.
+- The hub connects to one `https:` upstream over Streamable HTTP with the console's own service token; it never starts a command in hosted mode.
+- Access JWT on every request (RS256, cached keys, issuer, audience, `exp`/`nbf`, owner email), plus `Origin`, `Host` and custom-header checks on `/api`.
+- No write routes (405) and nothing under `src/console` writes a file.
+- `GET /api/catalog` over a read-only package folder, with a synthetic fixture and a traversal test.
+- `Dockerfile` and `.dockerignore`: pinned Node 22, multi-stage, non-root, no credentials baked in.
+
+Remaining:
+- The compose file, the tunnel and the probe on the host that will run the container.
+- The portal and the Access application (the maintainer's).
+- A catalog page in the console (the page does not call `/api/catalog` yet), and serving a package's views and `PROVENANCE.json`.
+- The hosted side of the `package` command is built (see "Package command"); a deployed folder of packages is the maintainer's.
+- Publishing an image.
+
+Tests: `npm test` 101/101 (47 before; 54 in `test/hosted.test.ts`). Each control was removed in turn and its test went red, except that the catalog's link check and its real-path check each cover the other (both removed together goes red).
+
 ## Review findings closed
 Each of the twelve earlier `codex review` P2 findings is fixed and has a test that goes red when the fix is taken out. Console-page tests drive the built page inside happy-dom (`test/helpers/dom-page.ts`).
 

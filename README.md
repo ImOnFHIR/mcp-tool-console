@@ -222,12 +222,63 @@ package/<server-id>/
 
 Embedding: `import { buildPackage, writePackage } from "mcp-tool-console/package"` (Node only; not part of the browser-safe entry point).
 
+## Hosted mode
+
+The same console can run in a small container behind Cloudflare Access, as its owner's human UI. It is an MCP client of **exactly one upstream**: a Cloudflare MCP server portal, reached over Streamable HTTP with the console's own service token. Turning a tool on or off happens in the portal, not here. Laptop mode is the default and behaves as described above.
+
+Choose it with `CONSOLE_MODE=hosted`. Its configuration comes only from the environment:
+
+| Variable | What it is |
+|---|---|
+| `CONSOLE_MODE` | `hosted` selects this mode; unset or `laptop` is laptop mode; anything else refuses to start |
+| `CONSOLE_UPSTREAM_URL` | The one portal: a single `https:` URL |
+| `CONSOLE_UPSTREAM_CLIENT_ID`, `CONSOLE_UPSTREAM_CLIENT_SECRET` | This console's own service token, sent upstream as `CF-Access-Client-Id` and `CF-Access-Client-Secret` |
+| `CONSOLE_ACCESS_TEAM_DOMAIN` | `<team>.cloudflareaccess.com` (a bare team name also works) |
+| `CONSOLE_ACCESS_AUD` | The Access application's audience tag |
+| `CONSOLE_OWNER_EMAIL` | The one person let in |
+| `CONSOLE_PUBLIC_ORIGIN` | The `https` origin the page is served from, with no path |
+| `CONSOLE_PACKAGES_DIR` | Optional: a folder of tool packages for `GET /api/catalog` |
+| `CONSOLE_BIND_ADDRESS` | Optional, default `0.0.0.0`. `PORT` as in laptop mode |
+
+**Rules.** Each has a test in `test/hosted.test.ts`:
+- Hosted mode is chosen only by `CONSOLE_MODE`. Test: `hosted mode: chosen only by CONSOLE_MODE=hosted; anything unknown refuses`.
+- It never reads another service's Access credentials. Test: `hosted code never reads the other service's Access credential variables`.
+- The upstream is one `https:` URL. Test: `hosted config: the upstream is one https URL and nothing else`, and `hosted hub: one https upstream only`.
+- It never starts a command and never builds a stdio transport. Test: `hosted hub: never starts a command, whatever the config says`.
+- The service token goes upstream as the two Access headers, and the owner's own JWT is not forwarded. Tests: `hosted config: the service token goes upstream as the two Access headers`, `hosted server: the portal is sent this console's own service token`.
+- The read-only and cost gates apply to upstream tools unchanged. Test: `hosted server: lists the portal's tools and runs them under the same gates`.
+- Every request, the page included, carries an Access JWT that names the owner; anything else is a 403 with a plain message. Test: `hosted server: every request, the page included, needs the owner's Access JWT`.
+- The JWT check is RS256 only, with keys from the team's certs URL (cached), the issuer and audience checked, `exp` and `nbf` checked with 30 seconds of leeway, and the `email` claim equal to the owner's, ignoring case. Keys older than the cache time are never trusted, so an unreachable certs endpoint locks everyone out rather than keeping withdrawn keys alive. A service-token JWT has no email and is refused. Tests: the `access jwt: ...` group, one test per refusal.
+- A portal that drops the console's session shows as stopped, so the page offers Restart (only an HTTP 404 counts, not a JSON-RPC error that carries that number), and stopping or restarting ends the portal session. Tests: `hosted hub: a JSON-RPC error numbered 404 is not a lost session`, `hosted hub: stopping or restarting ends the portal session`, and `hosted hub: a portal that dropped our session shows as stopped, and Restart brings it back`.
+- Logs name a reason and never contain the token. Test: `hosted server: the token never reaches a log line`.
+- On `/api`, the `Origin` must be the public origin. Test: `hosted server: an Origin other than the public one is refused`.
+- On `/api`, the `x-console-request: 1` header must be present (the Access cookie is `SameSite=None`, so this is the CSRF guard; the page sends it). Test: `hosted server: a request without the console's custom header is refused`.
+- The `Host` header must be the public origin's host. Test: `hosted server: the Host header must be the public origin's host`.
+- No write routes: `PATCH`, `PUT` and `DELETE` on `/api` are a 405. Test: `hosted server: no write routes; PATCH, PUT and DELETE are a 405`.
+- No run history: nothing under `src/console` can write a file. Test: `hosted mode: nothing under src/console can write a file`.
+- A non-loopback bind without the Access settings exits non-zero and names the missing variables. Test: `hosted cli: a non-loopback bind without the Access settings exits non-zero and names them` (and the three tests after it).
+- `GET /api/catalog` is read-only, and no id or file name reaches outside its folder. Test: `catalog: no id or file name reaches outside the folder, and nothing is written`.
+- Laptop mode does not serve the catalog and refuses a non-loopback bind. Tests: `laptop mode does not serve /api/catalog`, `laptop cli: refuses a non-loopback bind and an unknown mode`.
+
+**The tool package.** `GET /api/catalog` reads packages in this shape and returns `{ servers: [{ id, tools, runs: [{ tool, file, recorded }] }] }`. The `package` command that will produce them doesn't exist yet; `test/fixtures/packages/sample/` is a synthetic example.
+```
+<dir>/<server-id>/package.json
+                 /tools/*.json            one tools/list entry each, with _meta
+                 /views/**/*.json         ToolView conformance views
+                 /runs/<tool>/*.json      { v: 1, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest }
+                 /PROVENANCE.json
+```
+Views and `PROVENANCE.json` are part of the format but `/api/catalog` doesn't serve them yet. Ids and file names are matched against a short pattern and symbolic links are skipped.
+
+**Container.** The `Dockerfile` builds the console and runs it as a non-root user with hosted mode on, bound to `0.0.0.0`, port 8080. No credential is baked in; with no settings it exits with the message naming them.
+
 ## What this repo won't do
 
 - **Be a second Inspector.** No protocol message log, no prompt or sampling screens. Use the Inspector for protocol debugging.
 - **Hold tool-specific code.** Anything about one tool lives in that tool's repo.
 - **Run write tools** or call anything outside your machine from the page.
 - **Keep a run history on disk.** Runs live only in the open page. The link token is kept for that browser tab only.
+- **In hosted mode,** it still keeps no run history, never runs write tools, never starts a command, never reads a local server config, and has no route that changes anything. It talks to one upstream and to nothing else.
 
 ## Versioning
 

@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readCatalog } from "../src/console/catalog.js";
 import { loadConsoleConfig, type ServerConfig } from "../src/console/config.js";
 import { buildPackage, isSafeName, readRuns } from "../src/package.js";
 
@@ -320,13 +321,52 @@ test("package: a server id that Windows can't use as a folder is refused for the
   git("commit", "-q", "-am", "reserved id");
   const r = cli(dir);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /server id "aux"/);
+  assert.match(r.stderr, /package folder "aux"/);
   assert.ok(!existsSync(join(dir, "package")));
   assert.equal(
     cli(dir, "--server", "aux", "--out", "fine").status,
     0,
     "an explicit folder is the caller's choice",
   );
+});
+
+test("package: a package folder the catalog would skip is refused, from the id or from --out", () => {
+  const { dir } = repo();
+  for (const out of ["Bad_Id", "has.dot", "x".repeat(41), "-lead"]) {
+    const r = cli(dir, "--server", "demo", "--out", out);
+    assert.equal(r.status, 1, out);
+    assert.match(r.stderr, /package folder .* lowercase letters, digits and dashes/, out);
+    assert.ok(!existsSync(join(dir, out)), `${out}: nothing written`);
+  }
+  assert.equal(cli(dir, "--server", "demo", "--out", "x".repeat(40)).status, 0, "40 is allowed");
+});
+
+test("package: everything the command writes is read back by the hosted catalog", async () => {
+  const long = `${"t".repeat(97)}_x1`; // 100 characters: the longest tool name the packager accepts
+  assert.equal(long.length, 100);
+  const server = inlineServer({ [long]: goodView, _under: goodView, plain: goodView });
+  const { dir } = repo(server.args[0]);
+  const runs = runsDir({
+    "long.json": { ...goodRun, tool: long },
+    "plain.json": { ...goodRun, tool: "plain" },
+  });
+  const r = cli(dir, "--runs", runs);
+  assert.equal(r.status, 0, r.stderr);
+
+  const pkg = join(dir, "package/demo");
+  const files = walk(pkg);
+  const wantTools = files.filter((f) => f.startsWith("tools/")).map((f) => f.slice(6, -5));
+  const wantRuns = files.filter((f) => f.startsWith("runs/")).map((f) => f.slice(5));
+  assert.equal(wantTools.length, 3);
+  assert.equal(wantRuns.length, 2);
+
+  const { servers } = await readCatalog(join(dir, "package"));
+  assert.deepEqual(
+    servers.map((s) => s.id),
+    ["demo"],
+  );
+  assert.deepEqual(servers[0].tools.map((t: any) => t.name).toSorted(), wantTools.toSorted());
+  assert.deepEqual(servers[0].runs.map((x) => x.file).toSorted(), wantRuns.toSorted());
 });
 
 test("package: only a folder that is exactly an earlier package is replaced", () => {

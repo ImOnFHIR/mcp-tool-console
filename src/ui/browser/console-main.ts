@@ -81,6 +81,7 @@ async function api(path: string, body?: unknown): Promise<any> {
     method: body === undefined ? "GET" : "POST",
     headers: {
       "x-console-token": token,
+      "x-console-request": "1",
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
