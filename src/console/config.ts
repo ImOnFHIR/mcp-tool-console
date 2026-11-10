@@ -1,7 +1,7 @@
 /**
  * Which MCP servers the dev console starts. Commands come only from these files, never from a request.
  *   console.config.json  committed: relative paths only (this repo's own server)
- *   console.local.json   gitignored: other servers on this machine (e.g. agent-vs-validator)
+ *   console.local.json   gitignored: other servers on this machine (e.g. another tool repo)
  * A server's child process gets the MCP SDK's default environment plus only the variables named in
  * `env` — so API keys never reach a tool unless a local config asks for them by name.
  */
