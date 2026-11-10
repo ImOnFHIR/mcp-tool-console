@@ -48,17 +48,19 @@ const choicesOf = (s?: Schema): Choice[] | null => {
   else if (s?.enum?.length) raws = s.enum.map((e) => ({ raw: e }));
   if (!raws) return null;
   // The page posts text, so 1 and "1" would be the same option. When that happens, keep the
-  // text as it was and give each non-text value a distinct JSON form, so the choice survives.
+  // text as it was and give each non-text value its own JSON form (never one already in use).
   const counts = new Map<string, number>();
   for (const r of raws) counts.set(String(r.raw), (counts.get(String(r.raw)) ?? 0) + 1);
-  return raws.map((r) => ({
-    value:
-      typeof r.raw !== "string" && counts.get(String(r.raw))! > 1
-        ? `json:${JSON.stringify(r.raw)}`
-        : String(r.raw),
-    label: r.label ?? String(r.raw),
-    raw: r.raw,
-  }));
+  const taken = new Set(raws.map((r) => String(r.raw)));
+  return raws.map((r) => {
+    let value = String(r.raw);
+    if (typeof r.raw !== "string" && counts.get(value)! > 1) {
+      value = `json:${JSON.stringify(r.raw)}`;
+      while (taken.has(value)) value = `json:${value}`;
+      taken.add(value);
+    }
+    return { value, label: r.label ?? String(r.raw), raw: r.raw };
+  });
 };
 /** The choice a value stands for: the same value first, then the same text. */
 const choiceFor = (choices: Choice[], v: unknown) =>

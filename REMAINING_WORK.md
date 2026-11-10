@@ -20,9 +20,10 @@ Each of the twelve earlier `codex review` P2 findings is fixed and has a test th
 | 11 | Inspector command omits the working directory | `inspector command: starts from the server's own folder` (and the page's `console page: the Inspector command starts in the server's folder and is quoted`) |
 | 12 | Inspector command arguments not shell-quoted | `inspector command: every word is shell-quoted` (same page test) |
 
-Tests: `npm test` 46/46 (28 before). Also covered, found by the review of these fixes:
+Tests: `npm test` 47/47 (28 before). Also covered, found by the review of these fixes:
 - `hub: results from a tool on an earlier page are still checked against its output schema` (paging must not drop the SDK's output checks)
 - `form: choices that read the same as text (1 and "1") still come back as picked`
+- `form: an encoded choice never takes the place of a real text choice`
 - `console page: a Try click on a folded page unfolds the form to show progress and problems`
 - `hub: the overview says where a server runs, for the Inspector command`
 

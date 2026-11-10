@@ -287,3 +287,16 @@ test('form: choices that read the same as text (1 and "1") still come back as pi
   assert.match(html, new RegExp(`<option value="${textValue}" selected>Text`));
   assert.equal(argsSummary(sch, { pick: "1" }), "pick: Text");
 });
+
+test("form: an encoded choice never takes the place of a real text choice", () => {
+  const sch = { type: "object", properties: { pick: { enum: [1, "1", "json:1"] } } };
+  const html = renderForm(sch, {});
+  const values = [...html.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(values).size, 3);
+  const pick = (v: string) => formToArgs(sch, [["pick", v]]).args.pick;
+  assert.deepEqual(
+    values.map(pick),
+    [1, "1", "json:1"],
+    "each option decodes to the value it stands for",
+  );
+});
