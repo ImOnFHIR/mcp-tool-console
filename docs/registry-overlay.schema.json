@@ -17,9 +17,9 @@
       "allOf": [{ "if": { "properties": { "tier": { "const": "never-public" } }, "required": ["tier"] }, "then": { "required": ["public"], "properties": { "public": { "const": false } } } }]
     },
     "safeRemoteUrl": {
-      "description": "https only; a host of two or more DNS labels; never localhost, *.local, *.internal, *.localhost, an IPv4 literal (which covers RFC 1918, loopback and link-local) or an IPv6 literal.",
+      "description": "https only; a host of two or more DNS labels; never localhost, *.local, *.internal, *.localhost, *.arpa, an IPv4 literal (which covers RFC 1918, loopback and link-local) or an IPv6 literal.",
       "type": "string",
-      "pattern": "^https://(?!localhost(?:[:/]|$))(?!\\[)(?!(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/]|$))(?![^/:]*\\.(?:local|internal|localhost)(?:[:/]|$))(?![^/:]*\\.(?:\\d+|0x[0-9a-f]*)(?:[:/]|$))[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?::\\d{1,5})?(?:/\\S*)?$"
+      "pattern": "^https://(?!localhost(?:[:/]|$))(?!\\[)(?!(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/]|$))(?![^/:]*\\.(?:local|internal|localhost|arpa)(?:[:/]|$))(?![^/:]*\\.(?:\\d+|0x[0-9a-f]*)(?:[:/]|$))[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?::\\d{1,5})?(?:/\\S*)?$"
     },
     "local": {
       "description": "How the laptop console starts the server: the shape of mcp-tool-console's console.config.json entry. No env (keys are named only in an uncommitted local file) and a relative cwd only.",

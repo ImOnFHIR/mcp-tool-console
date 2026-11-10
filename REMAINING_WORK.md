@@ -3,7 +3,7 @@
 Newest session first.
 
 ## Registry overlay schema
-Added `docs/registry-overlay.schema.json` (the rules on `_meta["com.imonfhir/registry"]` for a registry entry) with a pinned copy of the published server.json schema, one valid entry and eighteen negative fixtures under `test/fixtures/registry-overlay/`. `test/registry-overlay.test.ts` fails if the published copy changes, if a fixture is added or dropped without updating its list, or if any negative stops failing at its own rule.
+Added `docs/registry-overlay.schema.json` (the rules on `_meta["com.imonfhir/registry"]` for a registry entry) with a pinned copy of the published server.json schema, one valid entry and nineteen negative fixtures under `test/fixtures/registry-overlay/`. `test/registry-overlay.test.ts` fails if the published copy changes, if a fixture is added or dropped without updating its list, or if any negative stops failing at its own rule.
 
 Remaining: the console does not validate entries at runtime; a consumer that wants byte-identical rules copies the file and pins its hash.
 

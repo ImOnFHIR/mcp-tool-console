@@ -34,6 +34,7 @@ const NEGATIVE: Record<string, string> = {
   "unknown-tier": "/_meta/com.imonfhir~1registry/tier",
   "never-public-but-public": "/_meta/com.imonfhir~1registry/public",
   "ipv4-shorthand": "/remotes/0/url",
+  "home-arpa": "/remotes/0/url",
   "ipv4-hex": "/remotes/0/url",
   "package-headers": "/packages/0/transport/headers",
   "tool-never-public-but-public": "/_meta/com.imonfhir~1registry/tools/a_tool/public",
