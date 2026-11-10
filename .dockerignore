@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+.env*
+.dev.vars
+*.log
+.DS_Store
+console.local.json
+console.config.json
+.claude
+CLAUDE.md

@@ -8,19 +8,41 @@
  *   - only tools marked readOnlyHint: true can run
  *   - a tool that isn't declared free needs confirmCost: true on that call (a visible per-run tick)
  *   - request bodies are capped; the page is served with a strict CSP
+ * Hosted mode (`hosted` option) swaps the first three guards for these (tested in test/hosted.test.ts):
+ *   - the Host header must be the public origin's host
+ *   - every request carries an Access JWT that names the owner; anything else is a 403
+ *   - on /api: the Origin must be the public origin and x-console-request: 1 must be present
+ *   - no write routes: PATCH, PUT and DELETE on /api are a 405
+ *   - GET /api/catalog lists the tool packages in a folder, read-only
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { Hub } from "./hub.js";
+import type { Verdict } from "./access-jwt.js";
 
 export const MAX_BODY = 6 * 1024 * 1024;
 export const COST_KEY = "com.imonfhir/cost";
 
+export interface HostedOptions {
+  /** The one https origin the page is served from, e.g. https://console.example */
+  publicOrigin: string;
+  /** Checks the Cf-Access-Jwt-Assertion header; see access-jwt.ts. */
+  verifyOwner: (jwt: string | undefined) => Promise<Verdict>;
+  /** The /api/catalog body. */
+  catalog: () => Promise<unknown>;
+  /** Where refusals are logged (a reason code, never a token). Default: stderr. */
+  log?: (line: string) => void;
+}
+
 export interface ConsoleOptions {
   hub: Hub;
-  token: string;
+  /** Laptop mode: the per-launch link token. Not used in hosted mode. */
+  token?: string;
   page: () => string;
+  hosted?: HostedOptions;
 }
+
+export const REQUEST_HEADER = "x-console-request";
 
 const CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -52,20 +74,42 @@ async function body(req: IncomingMessage): Promise<any> {
   }
 }
 
+const headerValue = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
 export function isFree(tool: any): boolean {
   return tool?._meta?.[COST_KEY]?.free === true;
 }
 
 export function createConsoleServer(o: ConsoleOptions): Server {
+  const hosted = o.hosted;
+  if (!hosted && !o.token) throw new Error("Laptop mode needs a link token.");
+  const publicHost = hosted ? new URL(hosted.publicOrigin).host : "";
   const server = createServer(async (req, res) => {
     const port = (server.address() as any)?.port;
     const host = req.headers.host ?? "";
-    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)
-      return refuse(res, 403, "This console only answers on 127.0.0.1.");
     const origin = req.headers.origin;
-    if (origin && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`)
-      return refuse(res, 403, "Requests from other sites are refused.");
-    const url = new URL(req.url ?? "/", `http://${host}`);
+    if (hosted) {
+      if (host !== publicHost)
+        return refuse(res, 403, "This console answers on its own address only.");
+      const verdict = await hosted
+        .verifyOwner(headerValue(req.headers["cf-access-jwt-assertion"]))
+        .catch(() => ({ ok: false as const, reason: "malformed" as const }));
+      if (!verdict.ok) {
+        (hosted.log ?? ((l) => console.error(l)))(`access refused: ${verdict.reason}`);
+        return refuse(res, 403, "This console is for its owner only.");
+      }
+    } else {
+      if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)
+        return refuse(res, 403, "This console only answers on 127.0.0.1.");
+      if (origin && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`)
+        return refuse(res, 403, "Requests from other sites are refused.");
+    }
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", `http://${host}`);
+    } catch {
+      return refuse(res, 400, "Bad request.");
+    }
 
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, {
@@ -78,12 +122,23 @@ export function createConsoleServer(o: ConsoleOptions): Server {
       return res.end(o.page());
     }
     if (!url.pathname.startsWith("/api/")) return refuse(res, 404, "Not found.");
-    if (req.headers["x-console-token"] !== o.token)
+    if (hosted) {
+      // The Access cookie is SameSite=None, so another site's page could ride it: a browser's own
+      // same-origin GET has no Origin header, anything that changes state must name ours.
+      if (origin === undefined ? req.method !== "GET" : origin !== hosted.publicOrigin)
+        return refuse(res, 403, "Requests from other sites are refused.");
+      if (req.headers[REQUEST_HEADER] !== "1")
+        return refuse(res, 403, "Open the console from its own page.");
+      if (!["GET", "POST"].includes(req.method ?? ""))
+        return refuse(res, 405, "Hosted mode has no write routes.");
+    } else if (req.headers["x-console-token"] !== o.token)
       return refuse(res, 401, "Open the console from the link printed in the terminal.");
 
     try {
       if (req.method === "GET" && url.pathname === "/api/tools")
         return send(res, 200, { servers: o.hub.overview() });
+      if (hosted && req.method === "GET" && url.pathname === "/api/catalog")
+        return send(res, 200, await hosted.catalog());
       if (req.method === "GET" && url.pathname === "/api/log")
         return send(res, 200, { lines: o.hub.log(url.searchParams.get("server") ?? "") });
       if (req.method !== "POST") return refuse(res, 405, "Use POST.");
