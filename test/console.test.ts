@@ -281,3 +281,75 @@ test("console page: the cost tick is cleared as each run uses it", () => {
   const run = page.slice(page.indexOf("async function run("), page.indexOf("const callId"));
   assert.match(run, /costBox\.checked = false/);
 });
+
+const hubFor = (helper: string, timeoutSeconds: number) =>
+  new Hub([
+    {
+      id: "h",
+      label: "H",
+      command: process.execPath,
+      args: [resolve(`dist/test/helpers/${helper}.js`)],
+      cwd: dir,
+      env: [],
+      timeoutSeconds,
+    },
+  ]);
+
+test(
+  "hub: a server that dies mid-call fails the call at once, not at the time limit",
+  { timeout: 15_000 },
+  async () => {
+    const h = hubFor("fake-mcp", 4); // the limit is long enough to tell "at once" from "at the limit"
+    await h.start("h");
+    try {
+      const t0 = Date.now();
+      await assert.rejects(
+        h.call("h", "die", {}, "die-1"),
+        (e: Error) => /closed/i.test(e.message) && !/timed out|timeout/i.test(e.message),
+      );
+      assert.ok(Date.now() - t0 < 2500, `took ${Date.now() - t0} ms: waited for the time limit`);
+      const [s] = h.overview();
+      assert.equal(s.status, "stopped");
+      assert.equal(s.error, "The server stopped.");
+    } finally {
+      await h.stopAll();
+    }
+  },
+);
+
+test("hub: tools/list is followed across every page", { timeout: 15_000 }, async () => {
+  const h = hubFor("fake-paged-mcp", 5);
+  await h.start("h");
+  try {
+    const [s] = h.overview();
+    assert.equal(s.status, "ready", s.error ?? "");
+    assert.deepEqual(
+      s.tools.map((t: any) => t.name),
+      ["first_page_tool", "second_page_tool", "third_page_tool"],
+    );
+  } finally {
+    await h.stopAll();
+  }
+});
+
+test(
+  "hub: results from a tool on an earlier page are still checked against its output schema",
+  { timeout: 15_000 },
+  async () => {
+    const h = hubFor("fake-paged-mcp", 5);
+    await h.start("h");
+    try {
+      for (const name of ["first_page_tool", "third_page_tool"])
+        await assert.rejects(h.call("h", name, {}, `c-${name}`), /structured|schema/i, name);
+    } finally {
+      await h.stopAll();
+    }
+  },
+);
+
+test("hub: the overview says where a server runs, for the Inspector command", () => {
+  const s = hubFor("fake-mcp", 5).overview()[0];
+  assert.equal(s.command, "node");
+  assert.deepEqual(s.args, [resolve("dist/test/helpers/fake-mcp.js")]);
+  assert.equal(s.cwd, dir);
+});

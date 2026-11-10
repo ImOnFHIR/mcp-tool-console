@@ -60,5 +60,16 @@ server.registerTool(
   }),
 );
 
+server.registerTool(
+  "die",
+  { title: "Die", inputSchema: {}, annotations: ro, _meta: free },
+  async () => {
+    // The server process ends while this call is still unanswered.
+    setTimeout(() => process.exit(1), 50);
+    await new Promise(() => {});
+    return { content: [] };
+  },
+);
+
 console.error("fake server started"); // goes to the console's server log
 await server.connect(new StdioServerTransport());

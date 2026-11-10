@@ -5,6 +5,7 @@
 import { renderView, esc } from "../render.js";
 import { renderForm, formToArgs, argsSummary } from "../form.js";
 import { checkView, type ToolView } from "../view.js";
+import { inspectorCommand } from "../inspector.js";
 
 const META = {
   about: "com.imonfhir/about",
@@ -28,8 +29,10 @@ interface ServerInfo {
   status: "starting" | "ready" | "stopped";
   error: string | null;
   tools: Tool[];
-  /** How to start the server by hand, e.g. "node dist/mcp.js". */
-  launch?: string;
+  /** How to start the server by hand (for the Inspector command), and where it runs. */
+  command?: string;
+  args?: string[];
+  cwd?: string;
 }
 interface Run {
   at: Date;
@@ -167,15 +170,40 @@ function renderTool(server: ServerInfo, t: Tool) {
       <p id="form-problems" class="c-error-line" hidden></p>
     </form>
     <section class="c-history" aria-label="Recent runs"><h2>Recent runs</h2><ol id="history"></ol></section>`;
-  wireForm(server, t, presets);
+  wireTool(server, t, presets);
   renderHistory(k);
   const last = runs.get(k)?.[0];
-  if (last) showRun(last, t);
+  if (last) showRun(last, server, t);
 }
 
 // ── form and running ─────────────────────────────────────────────────────────
-function wireForm(server: ServerInfo, t: Tool, presets: any[]) {
+/** Listeners on things that survive a refill of the form: wired once per tool page. */
+function wireTool(server: ServerInfo, t: Tool, presets: any[]) {
   const form = $<HTMLFormElement>("#run-form");
+  wireFields(form);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const entries = [...new FormData(form).entries()].map(
+      ([k, v]) => [k, String(v)] as [string, string],
+    );
+    const { args, problems: p } = formToArgs(t.inputSchema ?? {}, entries);
+    if (p.length) return problems(p);
+    run(server, t, args);
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const p = presets[Number(b.dataset.preset)];
+      fillForm(t, p.args ?? {});
+      run(server, t, p.args ?? {});
+    }),
+  );
+  $("#cancel-btn").addEventListener("click", async () => {
+    if (busy) await api("/api/cancel", { callId: busy.callId }).catch(() => {});
+  });
+}
+
+/** Listeners on the fields themselves: wired again whenever the fields are drawn again. */
+function wireFields(form: HTMLFormElement) {
   form.querySelectorAll<HTMLInputElement>("input[type=range][data-sync]").forEach((sl) => {
     const box = document.getElementById(sl.dataset.sync!) as HTMLInputElement;
     sl.addEventListener("input", () => {
@@ -207,36 +235,19 @@ function wireForm(server: ServerInfo, t: Tool, presets: any[]) {
       }
     }),
   );
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const entries = [...new FormData(form).entries()].map(
-      ([k, v]) => [k, String(v)] as [string, string],
-    );
-    const { args, problems: p } = formToArgs(t.inputSchema ?? {}, entries);
-    if (p.length) return problems(p);
-    run(server, t, args);
-  });
-  document.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const p = presets[Number(b.dataset.preset)];
-      fillForm(t, p.args ?? {});
-      run(server, t, p.args ?? {});
-    }),
-  );
-  $("#cancel-btn").addEventListener("click", async () => {
-    if (busy) await api("/api/cancel", { callId: busy.callId }).catch(() => {});
-  });
 }
 
 function fillForm(t: Tool, args: Record<string, unknown>) {
   const form = $<HTMLFormElement>("#run-form");
   const advanced: string[] = t._meta?.[META.form]?.advanced ?? [];
-  const keep = form.querySelector(".c-cost")?.outerHTML ?? "";
-  const tail =
-    form.querySelector(".c-run-row")!.outerHTML + form.querySelector("#form-problems")!.outerHTML;
-  form.innerHTML = renderForm(t.inputSchema ?? {}, args, advanced) + keep + tail;
-  const s = servers.find((x) => x.tools.includes(t))!;
-  wireForm(s, t, t._meta?.[META.presets] ?? []);
+  // Move the cost tick, the Run row and the problem line across as they are: copying their HTML
+  // would drop the tick and their listeners.
+  const keep = [".c-cost", ".c-run-row", "#form-problems"]
+    .map((sel) => form.querySelector(sel))
+    .filter((el): el is Element => el !== null);
+  form.innerHTML = renderForm(t.inputSchema ?? {}, args, advanced);
+  form.append(...keep);
+  wireFields(form);
 }
 
 function problems(p: string[]) {
@@ -248,9 +259,18 @@ function problems(p: string[]) {
 async function run(server: ServerInfo, t: Tool, args: Record<string, unknown>) {
   if (busy) return;
   problems([]);
+  // Run again from a folded page (a Try or next-step click): open the form so the progress,
+  // Cancel and any problem are in view; the result folds it away again.
+  $("#run-form").hidden = false;
+  $("#settings-line").hidden = true;
   const costBox = document.getElementById("confirm-cost") as HTMLInputElement | null;
   const confirmCost = costBox?.checked === true;
   if (costBox) costBox.checked = false; // each run that may cost money needs its own tick
+  // The call can outlive the page it was started from; only draw on that page while it is open.
+  const here = () => {
+    const r = route();
+    return r?.server === server.id && r.tool === t.name;
+  };
   const callId = crypto.randomUUID();
   const started = Date.now();
   const status = $("#run-status");
@@ -283,17 +303,33 @@ async function run(server: ServerInfo, t: Tool, args: Record<string, unknown>) {
     };
     const k = key(server.id, t.name);
     runs.set(k, [entry, ...(runs.get(k) ?? [])].slice(0, 8));
-    showRun(entry, t);
-    renderHistory(k);
+    if (here()) {
+      showRun(entry, server, t);
+      renderHistory(k);
+    }
   } catch (e) {
-    problems([(e as Error).message]);
+    if (here()) problems([(e as Error).message]);
   } finally {
     window.clearInterval(busy!.timer);
     busy = null;
     status.textContent = "";
-    $<HTMLButtonElement>("#run-btn").disabled = false;
-    $("#cancel-btn").hidden = true;
+    if (here()) {
+      $<HTMLButtonElement>("#run-btn").disabled = false;
+      $("#cancel-btn").hidden = true;
+    }
+    // A run is when we find out a server stopped: show it, so Restart appears.
+    await refreshServers();
   }
+}
+
+/** Re-read every server's status (and tools) and redraw the left list. */
+async function refreshServers() {
+  try {
+    servers = (await api("/api/tools")).servers;
+  } catch {
+    return;
+  }
+  renderNav(($("#search") as HTMLInputElement).value);
 }
 
 /** Use the tool's own view; otherwise build a plain one from what came back. */
@@ -338,17 +374,16 @@ function toViewOrFallback(r: any): ToolView {
   };
 }
 
-function showRun(entry: Run, t: Tool) {
+function showRun(entry: Run, server: ServerInfo, t: Tool) {
   shown = entry;
   $("#result").innerHTML = renderView(entry.view, { withNext: true });
   $("#result")
     .querySelectorAll<HTMLButtonElement>("[data-patch]")
     .forEach((b) =>
       b.addEventListener("click", () => {
-        const s = servers.find((x) => x.tools.includes(t))!;
         const args = { ...entry.args, ...JSON.parse(b.dataset.patch!) };
         fillForm(t, args);
-        run(s, t, args);
+        run(server, t, args);
       }),
     );
   // Result first: fold the form into one line.
@@ -380,7 +415,7 @@ function renderHistory(k: string) {
       const r = route();
       const s = servers.find((x) => x.id === r?.server);
       const t = s?.tools.find((x) => x.name === r?.tool);
-      if (t) showRun(list[Number(b.dataset.run)], t);
+      if (s && t) showRun(list[Number(b.dataset.run)], s, t);
     }),
   );
 }
@@ -394,11 +429,11 @@ async function openDrawer() {
   const log = await api(`/api/log?server=${encodeURIComponent(s.id)}`)
     .then((x) => x.lines as string[])
     .catch(() => []);
-  const cli = `npx @modelcontextprotocol/inspector --cli ${s.launch || "<server command>"} --method tools/call --tool-name ${t.name}${Object.entries(
+  const cli = inspectorCommand(
+    s.command ? { command: s.command, args: s.args ?? [], cwd: s.cwd } : undefined,
+    t.name,
     shown?.args ?? {},
-  )
-    .map(([k, v]) => ` --tool-arg '${k}=${JSON.stringify(v)}'`)
-    .join("")}`;
+  );
   const tabs: [string, string][] = [
     ["Request", JSON.stringify(shown?.request ?? null, null, 2)],
     ["Response", JSON.stringify(shown?.response ?? null, null, 2)],
@@ -486,6 +521,7 @@ $("#nav").addEventListener("click", async (e) => {
 });
 $("#nav-toggle").addEventListener("click", () => document.body.classList.toggle("c-nav-open"));
 $("#tech-btn").addEventListener("click", openDrawer);
+window.addEventListener("focus", () => void refreshServers());
 document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !$("#run-form")?.hidden)
     ($("#run-form") as HTMLFormElement | null)?.requestSubmit();

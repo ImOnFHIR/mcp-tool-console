@@ -24,8 +24,11 @@ type Schema = {
 };
 
 export interface Choice {
+  /** What the page shows and posts back: always a string. */
   value: string;
   label: string;
+  /** The schema's own value (a number or boolean stays one), sent to the tool. */
+  raw: unknown;
 }
 
 export type Widget =
@@ -39,11 +42,29 @@ export type Widget =
 
 const choicesOf = (s?: Schema): Choice[] | null => {
   const alts = s?.anyOf ?? s?.oneOf;
+  let raws: { raw: unknown; label?: string }[] | null = null;
   if (alts?.length && alts.every((a) => a.const !== undefined))
-    return alts.map((a) => ({ value: String(a.const), label: a.title ?? String(a.const) }));
-  if (s?.enum?.length) return s.enum.map((e) => ({ value: String(e), label: String(e) }));
-  return null;
+    raws = alts.map((a) => ({ raw: a.const, label: a.title }));
+  else if (s?.enum?.length) raws = s.enum.map((e) => ({ raw: e }));
+  if (!raws) return null;
+  // The page posts text, so 1 and "1" would be the same option. When that happens, keep the
+  // text as it was and give each non-text value its own JSON form (never one already in use).
+  const counts = new Map<string, number>();
+  for (const r of raws) counts.set(String(r.raw), (counts.get(String(r.raw)) ?? 0) + 1);
+  const taken = new Set(raws.map((r) => String(r.raw)));
+  return raws.map((r) => {
+    let value = String(r.raw);
+    if (typeof r.raw !== "string" && counts.get(value)! > 1) {
+      value = `json:${JSON.stringify(r.raw)}`;
+      while (taken.has(value)) value = `json:${value}`;
+      taken.add(value);
+    }
+    return { value, label: r.label ?? String(r.raw), raw: r.raw };
+  });
 };
+/** The choice a value stands for: the same value first, then the same text. */
+const choiceFor = (choices: Choice[], v: unknown) =>
+  choices.find((c) => c.raw === v) ?? choices.find((c) => c.value === String(v));
 const typeOf = (s: Schema) => (Array.isArray(s.type) ? s.type.find((t) => t !== "null") : s.type);
 
 /** Bounds come from a tool's schema and go into HTML attributes, so only real numbers count. */
@@ -80,11 +101,13 @@ function field(key: string, s: Schema, value: unknown, required: boolean): strin
   const req = required ? ' <span class="f-req">required</span>' : "";
   switch (w.kind) {
     case "chips": {
-      const sel = new Set(Array.isArray(value) ? value.map(String) : []);
+      const sel = new Set(
+        (Array.isArray(value) ? value : []).map((v) => choiceFor(w.choices, v)?.value ?? String(v)),
+      );
       return `<fieldset class="f-field f-chips" data-key="${esc(key)}" data-widget="chips"><legend>${label}${req}</legend>${help}<div class="f-chip-row">${w.choices.map((c, i) => `<label class="f-chip" for="${id(key)}-${i}"><input type="checkbox" id="${id(key)}-${i}" name="${esc(key)}" value="${esc(c.value)}"${sel.has(c.value) ? " checked" : ""}${aria}><span>${esc(c.label)}</span></label>`).join("")}</div></fieldset>`;
     }
     case "select":
-      return `<div class="f-field" data-key="${esc(key)}" data-widget="select"><label for="${id(key)}">${label}${req}</label>${help}<select id="${id(key)}" name="${esc(key)}"${aria}>${required ? "" : `<option value="">Default</option>`}${w.choices.map((c) => `<option value="${esc(c.value)}"${String(value) === c.value ? " selected" : ""}>${esc(c.label)}</option>`).join("")}</select></div>`;
+      return `<div class="f-field" data-key="${esc(key)}" data-widget="select"><label for="${id(key)}">${label}${req}</label>${help}<select id="${id(key)}" name="${esc(key)}"${aria}>${required ? "" : `<option value="">Default</option>`}${w.choices.map((c) => `<option value="${esc(c.value)}"${value !== undefined && choiceFor(w.choices, value) === c ? " selected" : ""}>${esc(c.label)}</option>`).join("")}</select></div>`;
     case "range": {
       const v = typeof value === "number" ? value : "";
       return `<div class="f-field" data-key="${esc(key)}" data-widget="range"><label for="${id(key)}">${label}${req}</label>${help}<div class="f-range"><input type="range" id="${id(key)}-slider" min="${w.min}" max="${w.max}" step="${w.integer ? 1 : "any"}" value="${v === "" ? w.min : v}" aria-label="${label} slider" data-sync="${id(key)}"><input type="number" id="${id(key)}" name="${esc(key)}" min="${w.min}" max="${w.max}" step="${w.integer ? 1 : "any"}" value="${v}" placeholder="Default"${aria}></div></div>`;
@@ -92,7 +115,7 @@ function field(key: string, s: Schema, value: unknown, required: boolean): strin
     case "number":
       return `<div class="f-field" data-key="${esc(key)}" data-widget="number"><label for="${id(key)}">${label}${req}</label>${help}<input type="number" id="${id(key)}" name="${esc(key)}" step="${w.integer ? 1 : "any"}" value="${typeof value === "number" ? value : ""}" placeholder="Default"${aria}></div>`;
     case "switch":
-      return `<div class="f-field f-switch" data-key="${esc(key)}" data-widget="switch"><label for="${id(key)}"><input type="checkbox" id="${id(key)}" name="${esc(key)}" value="true"${value === true ? " checked" : ""}${aria}> ${label}</label>${help}</div>`;
+      return `<div class="f-field f-switch" data-key="${esc(key)}" data-widget="switch"><label for="${id(key)}"><input type="checkbox" id="${id(key)}" name="${esc(key)}" value="true"${(value ?? s.default) === true ? " checked" : ""}${aria}> ${label}</label>${help}</div>`;
     case "paste":
       return `<div class="f-field" data-key="${esc(key)}" data-widget="paste"><label for="${id(key)}">${label}${req}</label>${help}<textarea id="${id(key)}" name="${esc(key)}" rows="8" spellcheck="false" placeholder="Paste JSON here"${aria}>${value === undefined ? "" : esc(typeof value === "string" ? value : JSON.stringify(value, null, 2))}</textarea><div class="f-paste-tools"><button type="button" data-action="load-file" data-target="${id(key)}">Load file</button><button type="button" data-action="format" data-target="${id(key)}">Format</button></div></div>`;
     case "text":
@@ -132,12 +155,20 @@ export function formToArgs(
     const w = widgetFor(s);
     const label = s.title ?? key;
     if (w.kind === "chips") {
-      if (vals.length) args[key] = vals;
+      // Number or boolean choices go back as numbers or booleans, not as their text.
+      if (vals.length)
+        args[key] = vals.map((x) => {
+          const hit = w.choices.find((c) => c.value === x);
+          return hit ? hit.raw : x;
+        });
       continue;
     }
     const v = vals[0];
     if (w.kind === "switch") {
+      // An unticked box is "no", and the tool must be able to hear it. Only a tool whose own
+      // default is already false is left to its default.
       if (v === "true") args[key] = true;
+      else if (s.default !== false) args[key] = false;
       continue;
     }
     if (v === undefined || v.trim() === "") continue;
@@ -154,6 +185,9 @@ export function formToArgs(
       } catch {
         problems.push(`${label}: this isn't valid JSON`);
       }
+    } else if (w.kind === "select") {
+      const hit = w.choices.find((c) => c.value === v);
+      args[key] = hit ? hit.raw : v;
     } else args[key] = v;
   }
   return { args, problems };
@@ -168,8 +202,7 @@ export function argsSummary(schema: Schema, args: Record<string, unknown>): stri
     if (v === undefined) continue;
     const w = widgetFor(s);
     const name = (x: unknown) =>
-      ("choices" in w ? w.choices.find((c) => c.value === String(x))?.label : undefined) ??
-      String(x);
+      ("choices" in w ? choiceFor(w.choices, x)?.label : undefined) ?? String(x);
     parts.push(
       `${label}: ${Array.isArray(v) ? v.map(name).join(", ") : typeof v === "object" ? "pasted" : name(v)}`,
     );
