@@ -646,6 +646,39 @@ test("hosted hub: stopping or restarting ends the portal session", async () => {
   }
 });
 
+test("hosted hub: a redirect off the portal's origin is not followed, so the service token stays there", async () => {
+  // Access answers a refused service token with a 302 to its login page. Following it would send
+  // CF-Access-Client-Secret to whatever origin the Location names.
+  // Like the real fetch, this one follows a redirect itself (headers and all) unless the caller
+  // asked for "manual" or "error"; a fake that never follows would pass whatever the hub chose.
+  const elsewhere: Record<string, string>[] = [];
+  const redirecting: typeof fetch = async (input, init) => {
+    const u = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    if (u.origin === "https://portal.test") {
+      const location = "https://login.elsewhere.test/cdn-cgi/access/login";
+      if (init?.redirect === "manual" || init?.redirect === "error")
+        return new Response(null, { status: 302, headers: { location } });
+      return redirecting(location, { ...init, method: "GET", body: undefined });
+    }
+    elsewhere.push(Object.fromEntries(new Headers(init?.headers).entries()));
+    return new Response("<html>sign in</html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
+  };
+  const cfg = upstreamServerConfig(loadHostedConfig(goodEnv()));
+  const h = new Hub([{ ...cfg, upstream: { ...cfg.upstream!, fetch: redirecting } }], {
+    hosted: true,
+  });
+  await h.start("portal");
+  try {
+    assert.deepEqual(elsewhere, [], "a request left the portal's origin");
+    assert.notEqual(h.overview()[0].status, "ready");
+  } finally {
+    await h.stopAll();
+  }
+});
+
 // ── the catalog ─────────────────────────────────────────────────────────────────────────────────
 test("catalog: reads the sample package", async () => {
   const c = await readCatalog(PACKAGES);
