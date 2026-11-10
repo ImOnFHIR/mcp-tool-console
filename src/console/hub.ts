@@ -7,6 +7,11 @@ import {
   StdioClientTransport,
   getDefaultEnvironment,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ServerConfig } from "./config.js";
 
 export type ServerStatus = "starting" | "ready" | "stopped";
@@ -14,6 +19,8 @@ export type ServerStatus = "starting" | "ready" | "stopped";
 interface Live {
   config: ServerConfig;
   client?: Client;
+  /** Hosted mode: the upstream transport, so its session can be ended on stop. */
+  http?: StreamableHTTPClientTransport;
   status: ServerStatus;
   error?: string;
   log: string[];
@@ -45,11 +52,36 @@ async function listAllTools(client: Client): Promise<any[]> {
   return tools;
 }
 
+/** Hosted mode never starts a command: the only thing it may connect to is one https upstream. */
+function assertHostedUpstream(c: ServerConfig) {
+  if (!c.upstream || c.command || c.args.length)
+    throw new Error("Hosted mode never starts a command; it connects to one upstream only.");
+  let u: URL;
+  try {
+    u = new URL(c.upstream.url);
+  } catch {
+    throw new Error("The upstream must be a URL.");
+  }
+  if (u.protocol !== "https:") throw new Error("The upstream must be an https: URL.");
+}
+
 export class Hub {
   private servers = new Map<string, Live>();
   private calls = new Map<string, AbortController>();
 
-  constructor(configs: ServerConfig[]) {
+  /**
+   * `hosted: true` makes this hub an MCP client of exactly one https upstream. It then refuses
+   * any config that would start a command, here and again at start().
+   */
+  constructor(
+    configs: ServerConfig[],
+    private opts: { hosted?: boolean } = {},
+  ) {
+    if (opts.hosted) {
+      if (configs.length !== 1)
+        throw new Error("Hosted mode talks to exactly one upstream server.");
+      for (const c of configs) assertHostedUpstream(c);
+    }
     for (const c of configs)
       this.servers.set(c.id, { config: c, status: "stopped", log: [], tools: [] });
   }
@@ -67,19 +99,33 @@ export class Hub {
     await this.stop(id);
     s.status = "starting";
     s.error = undefined;
-    const env: Record<string, string> = { ...getDefaultEnvironment() };
-    for (const k of s.config.env) if (process.env[k] !== undefined) env[k] = process.env[k]!;
-    const transport = new StdioClientTransport({
-      command: s.config.command,
-      args: s.config.args,
-      cwd: s.config.cwd,
-      env,
-      stderr: "pipe",
-    });
-    transport.stderr?.on("data", (b: Buffer) => {
-      s.log.push(...b.toString("utf8").split("\n").filter(Boolean));
-      if (s.log.length > LOG_LINES) s.log.splice(0, s.log.length - LOG_LINES);
-    });
+    let transport: Transport;
+    let pendingHttp: StreamableHTTPClientTransport | undefined;
+    if (this.opts.hosted) {
+      assertHostedUpstream(s.config);
+      const http = new StreamableHTTPClientTransport(new URL(s.config.upstream!.url), {
+        requestInit: { headers: s.config.upstream!.headers },
+        fetch: s.config.upstream!.fetch,
+        redirectPolicy: "same-origin",
+      });
+      transport = http;
+      pendingHttp = http;
+    } else {
+      const env: Record<string, string> = { ...getDefaultEnvironment() };
+      for (const k of s.config.env) if (process.env[k] !== undefined) env[k] = process.env[k]!;
+      const stdio = new StdioClientTransport({
+        command: s.config.command,
+        args: s.config.args,
+        cwd: s.config.cwd,
+        env,
+        stderr: "pipe",
+      });
+      stdio.stderr?.on("data", (b: Buffer) => {
+        s.log.push(...b.toString("utf8").split("\n").filter(Boolean));
+        if (s.log.length > LOG_LINES) s.log.splice(0, s.log.length - LOG_LINES);
+      });
+      transport = stdio;
+    }
     const client = new Client({ name: "imonfhir-dev-console", version: "0.1.0" });
     try {
       await client.connect(transport);
@@ -96,6 +142,7 @@ export class Hub {
       };
       const tools = await listAllTools(client);
       s.client = client;
+      s.http = pendingHttp;
       s.tools = tools;
       s.status = "ready";
     } catch (e) {
@@ -113,7 +160,16 @@ export class Hub {
     const s = this.servers.get(id);
     if (s?.client) {
       const c = s.client;
+      const http = s.http;
       s.client = undefined;
+      s.http = undefined;
+      // A stateful portal keeps our session until told it is over; closing the transport alone
+      // would leave one behind on every restart. Bounded, so a dead portal can't hold a restart.
+      if (http)
+        await Promise.race([
+          http.terminateSession().catch(() => {}),
+          new Promise((r) => setTimeout(r, 3000).unref()),
+        ]);
       await c.close().catch(() => {});
     }
     if (s) s.status = "stopped";
@@ -155,13 +211,28 @@ export class Hub {
     const s = this.servers.get(id);
     if (!s?.client || s.status !== "ready")
       throw new Error(`${s?.config.label ?? id} isn't running. Restart it from the console.`);
+    const client = s.client;
     const ac = new AbortController();
     this.calls.set(callId, ac);
     try {
-      return await s.client.callTool({ name, arguments: args }, undefined, {
+      return await client.callTool({ name, arguments: args }, undefined, {
         signal: ac.signal,
         timeout: s.config.timeoutSeconds * 1000,
       });
+    } catch (e) {
+      // A portal that has dropped our session answers 404 and never closes the connection. Say
+      // so, so the page offers Restart instead of reusing a session that is gone.
+      if (e instanceof StreamableHTTPError && e.code === 404) {
+        // Several calls can fail together; only the first to arrive changes the shared state.
+        if (s.client === client) {
+          s.client = undefined;
+          s.http = undefined;
+          s.status = "stopped";
+          s.error = "The portal ended the session.";
+        }
+        await client.close().catch(() => {});
+      }
+      throw e;
     } finally {
       this.calls.delete(callId);
     }
