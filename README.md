@@ -60,8 +60,9 @@ This repo is how ImOnFHIR's tools live up to that:
 | `mcp-tool-console/form` | `renderForm(schema)`, `formToArgs`, `argsSummary`: a JSON Schema as a plain form | Anywhere |
 | `mcp-tool-console/styles` | `TOKENS`, `VIEW_CSS`: the shared look, light and dark | Anywhere |
 | `mcp-tool-console/console` | `Hub`, `createConsoleServer`, `loadConsoleConfig`: the console's Node side | Node |
+| `mcp-tool-console/package` | `buildPackage`, `writePackage`: the `package` command's builder | Node |
 | `mcp-tool-console/tool-view.schema.json` | ToolView v1 as JSON Schema | Data |
-| `mcp-tool-console` (command) | Starts the dev console for the repo you run it in | Node |
+| `mcp-tool-console` (command) | Starts the dev console for the repo you run it in; `mcp-tool-console package` writes a package | Node |
 
 ## Quick start
 
@@ -186,6 +187,38 @@ The form turns these into the right control:
 - Started servers get the MCP SDK's default environment plus only the variable names your local config lists, so API keys don't leak by accident.
 - Request bodies are capped, and the page is one self-contained file served under a strict Content Security Policy.
 - The console code never imports an AI SDK or spending code.
+
+## Packages
+
+`mcp-tool-console package` turns a configured server into a folder another site can embed and pin. It reads the same `console.config.json` as the console, so it knows nothing about any one tool.
+
+```sh
+npx mcp-tool-console package [--server <id>] [--out <dir>] [--runs <dir>]
+```
+- With no `--server` it packages every configured server. With `--server` it packages that one.
+- `--out` defaults to `package/<server-id>/`. Without `--server`, `--out` is a parent folder and each server gets `<out>/<server-id>/`.
+- `--runs` is a folder of recorded runs to include.
+
+```text
+package/<server-id>/
+  package.json                  { id, name, version, tools }   name and version come from the server's own initialize reply
+  tools/<tool>.json             the tools/list entry, _meta included
+  views/<tool>/<preset-id>.json the ToolView a preset produced
+  runs/<tool>/<file>.json       copied from --runs
+  PROVENANCE.json               sha256 of every file, and packageDigest
+```
+
+**What it runs.** Only the presets of tools that are `readOnlyHint: true` and declared `cost: { free: true }`. A preset on any other tool is left alone and the command says so. Every view must pass `checkView`, or the command fails.
+
+**Recorded runs.** Each file in `--runs` must be exactly `{ v: 1, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest }` (its `view` must pass `checkView`). Any other shape fails the command and names the file.
+
+**It refuses a dirty tree.** If `git status` shows an uncommitted change to a tracked file, or the folder isn't a git repository, the command exits 1 and writes nothing, not even the output folder. Untracked files don't count: the folders this command writes are untracked until you commit them. Commit your change first, then package, then commit the package.
+
+**Deterministic.** Keys are sorted, file lists are sorted, and there are no timestamps. The same inputs give the same bytes, and the repo's own `package/samples/` is checked against a fresh build by a test.
+
+**`packageDigest`** is `sha256:` plus the hex sha256 of the sorted `path:hash` lines (joined by a newline, `PROVENANCE.json` left out). A consumer pins it and refuses a package whose digest differs. It has no commit SHA in it on purpose: a SHA changes with every commit, so a committed package would be stale at once. The digest changes only when the package's content does.
+
+Embedding: `import { buildPackage, writePackage } from "mcp-tool-console/package"` (Node only; not part of the browser-safe entry point).
 
 ## What this repo won't do
 
