@@ -278,6 +278,57 @@ test("package: names Windows can't hold as one file each are refused", async () 
   assert.ok(!isSafeName("echo.") && !isSafeName("Aux.json") && !isSafeName(".hidden"));
 });
 
+test("package: overlong names fail the build before anything is replaced", async () => {
+  await assert.rejects(
+    () => buildPackage(inlineServer({ ["x".repeat(101)]: goodView })),
+    /not usable as a file name/,
+  );
+  assert.ok(isSafeName("x".repeat(100)) && !isSafeName("x".repeat(101)));
+});
+
+test("package: a recording for a tool two packaged servers share is ambiguous", () => {
+  const { dir } = repo();
+  writeFileSync(
+    join(dir, "console.config.json"),
+    JSON.stringify({
+      servers: ["a", "b"].map((id) => ({ id, label: id, command: "node", args: [FAKE] })),
+    }),
+  );
+  execFileSync("git", ["-C", dir, "commit", "-q", "-am", "two servers", "--no-gpg-sign"], {
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@example.com",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@example.com",
+    },
+  });
+  const runs = runsDir({ "r.json": goodRun });
+  const both = cli(dir, "--runs", runs);
+  assert.equal(both.status, 1);
+  assert.match(both.stderr, /a and b both have a tool named echo/);
+  assert.ok(!existsSync(join(dir, "package")));
+  assert.equal(cli(dir, "--server", "a", "--runs", runs).status, 0, "one server is unambiguous");
+});
+
+test("package: a server id that Windows can't use as a folder is refused for the default folder", () => {
+  const { dir, git } = repo();
+  writeFileSync(
+    join(dir, "console.config.json"),
+    JSON.stringify({ servers: [{ id: "aux", label: "x", command: "node", args: [FAKE] }] }),
+  );
+  git("commit", "-q", "-am", "reserved id");
+  const r = cli(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /server id "aux"/);
+  assert.ok(!existsSync(join(dir, "package")));
+  assert.equal(
+    cli(dir, "--server", "aux", "--out", "fine").status,
+    0,
+    "an explicit folder is the caller's choice",
+  );
+});
+
 test("package: only a folder that is exactly an earlier package is replaced", () => {
   const { dir } = repo();
   assert.equal(cli(dir, "--server", "demo", "--out", "mine").status, 0);

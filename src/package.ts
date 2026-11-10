@@ -47,9 +47,13 @@ const SAFE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 /** Names Windows refuses as a file name, with or without an extension. */
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 
-/** A name safe to use as a file or folder name on any disk (plain characters, no trailing dot, not reserved). */
+/** Leaves room for the ".json" a name gets, under the 255-character limit most disks have. */
+const MAX_NAME = 100;
+
+/** A name safe to use as a file or folder name on any disk (plain characters, short, no trailing dot, not reserved). */
 export const isSafeName = (n: unknown): n is string =>
   typeof n === "string" &&
+  n.length <= MAX_NAME &&
   SAFE.test(n) &&
   !n.endsWith(".") &&
   !WINDOWS_RESERVED.test(n.split(".")[0]);
@@ -353,8 +357,19 @@ export async function runPackageCommand(argv: string[], cwd: string): Promise<nu
     const built: { out: string; pkg: BuiltPackage }[] = [];
     for (const s of picked) {
       const pkg = await buildPackage(s, { runs });
-      const out = opt.server && opt.out ? opt.out : join(opt.out ?? "package", s.id);
+      const direct = Boolean(opt.server && opt.out);
+      if (!direct && !isSafeName(s.id))
+        throw new PackageError(`server id "${s.id}" can't be used as a folder name on every disk`);
+      const out = direct ? opt.out! : join(opt.out ?? "package", s.id);
       built.push({ out: resolve(cwd, out), pkg });
+    }
+    // A recording carries no server id: if two packaged servers both have its tool, whose is it?
+    for (const r of runs) {
+      const owners = built.filter((b) => b.pkg.files.has(`runs/${r.tool}/${r.file}`));
+      if (owners.length > 1)
+        throw new PackageError(
+          `runs/${r.file}: ${owners.map((b) => b.pkg.id).join(" and ")} both have a tool named ${r.tool}; package one with --server`,
+        );
     }
     // A run for a tool no packaged server has is a mistake, not something to drop quietly.
     if (!opt.server) {
