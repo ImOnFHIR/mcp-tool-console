@@ -8,6 +8,7 @@ Done:
 - Presets are run only for tools that are `readOnlyHint: true` and declared free; every view passes `checkView`.
 - A dirty tree (tracked changes in the run folder or in any selected server's repository, or no git repository) is refused: exit 1, nothing written.
 - An existing output folder is replaced only if it is exactly an earlier package, hashes and digest verified; case-colliding, Windows-unsafe and overlong names fail the build; a recording for a tool two packaged servers share is refused as ambiguous.
+- The name rules come from the hosted catalog (`isCatalogId`, `isCatalogToolDir`, tool folders widened to 100 characters); a test packages with the real command and reads the result back through `readCatalog`.
 - Recorded runs are shape-checked; output is deterministic; `PROVENANCE.json` carries per-file hashes and `packageDigest` (no commit SHA).
 - `package/samples/` is committed, and a drift test regenerates it and compares every file and the file list.
 - The fake server's tools gained presets so the gate has something to refuse.
@@ -17,7 +18,7 @@ Remaining:
 - Any site consumer pinning a `packageDigest`.
 - Signed or attested provenance.
 
-Tests: `npm test` 66/66 (47 before, plus 19 in `test/package.test.ts`). Each control was removed to confirm its test goes red.
+Tests: `npm test` 122/122 (101 on main, plus 21 in `test/package.test.ts`). Each control was removed to confirm its test goes red.
 
 ## Hosted mode
 The console can run in a container behind Cloudflare Access as an MCP client of one upstream portal (README, "Hosted mode"). Laptop mode is unchanged.
