@@ -20,7 +20,7 @@ Remaining:
 - The `package` command that produces the package folder.
 - Publishing an image.
 
-Tests: `npm test` 100/100 (47 before; 53 in `test/hosted.test.ts`). Each control was removed in turn and its test went red, except that the catalog's link check and its real-path check each cover the other (both removed together goes red).
+Tests: `npm test` 101/101 (47 before; 54 in `test/hosted.test.ts`). Each control was removed in turn and its test went red, except that the catalog's link check and its real-path check each cover the other (both removed together goes red).
 
 ## Review findings closed
 Each of the twelve earlier `codex review` P2 findings is fixed and has a test that goes red when the fix is taken out. Console-page tests drive the built page inside happy-dom (`test/helpers/dom-page.ts`).
