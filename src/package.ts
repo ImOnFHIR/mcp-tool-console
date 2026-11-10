@@ -94,6 +94,33 @@ export function dirtyFiles(dir: string): string[] {
   return out.split("\n").filter(Boolean);
 }
 
+/**
+ * Uncommitted tracked changes in the repository that holds each folder, one report per repository.
+ * A server can live in another checkout (a local config's `cwd`), and its files are what the package
+ * is built from, so its repository must be clean too.
+ */
+export function dirtyAcross(dirs: string[]): string[] {
+  const seen = new Set<string>();
+  const problems: string[] = [];
+  for (const dir of dirs) {
+    let top: string;
+    try {
+      top = execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+    } catch {
+      throw new PackageError(
+        `${dir} is not in a git repository, so there is no commit to package from.`,
+      );
+    }
+    if (seen.has(top)) continue;
+    seen.add(top);
+    for (const l of dirtyFiles(top)) problems.push(`${top}: ${l}`);
+  }
+  return problems;
+}
+
 export interface RecordedRun {
   file: string;
   text: string;
@@ -209,10 +236,26 @@ export async function buildPackage(
     );
     for (const run of opts.runs ?? [])
       if (names.has(run.tool)) files.set(`runs/${run.tool}/${run.file}`, run.text);
+    assertDistinctPaths(files);
     files.set("PROVENANCE.json", provenance(files));
     return { id: config.id, files, called, skipped };
   } finally {
     await hub.stopAll();
+  }
+}
+
+/**
+ * Two paths that differ only in case (or Unicode form) are the same file on a default macOS or
+ * Windows disk: one would overwrite the other while PROVENANCE kept both hashes.
+ */
+export function assertDistinctPaths(files: Files) {
+  const seen = new Map<string, string>();
+  for (const p of files.keys()) {
+    const key = p.normalize("NFC").toLowerCase();
+    const other = seen.get(key);
+    if (other !== undefined)
+      throw new PackageError(`${other} and ${p} would be the same file on a case-insensitive disk`);
+    seen.set(key, p);
   }
 }
 
@@ -230,11 +273,31 @@ export function provenance(files: Files): string {
   return canonical({ v: 1, files: Object.fromEntries(hashes), packageDigest: `sha256:${digest}` });
 }
 
-/** Writes a built package. A folder that already holds something must be an earlier package. */
+/**
+ * True when `out` holds exactly an earlier package: a valid PROVENANCE.json and no file it doesn't
+ * list. Anything else in there belongs to someone else.
+ */
+function isEarlierPackage(out: string): boolean {
+  try {
+    const prov = JSON.parse(readFileSync(join(out, "PROVENANCE.json"), "utf8"));
+    if (prov?.v !== 1 || !isObj(prov.files) || !/^sha256:[0-9a-f]{64}$/.test(prov.packageDigest))
+      return false;
+    const owned = new Set([...Object.keys(prov.files), "PROVENANCE.json"]);
+    const walk = (dir: string, pre: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name), `${pre}${e.name}/`) : [pre + e.name],
+      );
+    return walk(out, "").every((f) => owned.has(f));
+  } catch {
+    return false;
+  }
+}
+
+/** Writes a built package. A folder that already holds something must be exactly an earlier package. */
 export function writePackage(out: string, files: Files) {
   if (existsSync(out)) {
     if (!statSync(out).isDirectory()) throw new PackageError(`${out} exists and is not a folder`);
-    if (readdirSync(out).length && !existsSync(join(out, "PROVENANCE.json")))
+    if (readdirSync(out).length && !isEarlierPackage(out))
       throw new PackageError(
         `${out} is not empty and is not an earlier package; won't overwrite it`,
       );
@@ -260,13 +323,13 @@ export async function runPackageCommand(argv: string[], cwd: string): Promise<nu
       opt[k.slice(2)] = argv[i + 1];
     }
     // Before anything starts or is written: a package must come from committed files.
-    const dirty = dirtyFiles(cwd);
+    const all = loadConsoleConfig(cwd);
+    const picked = opt.server ? all.filter((s) => s.id === opt.server) : all;
+    const dirty = dirtyAcross([cwd, ...picked.map((s) => s.cwd)]);
     if (dirty.length)
       throw new PackageError(
         `Uncommitted changes to tracked files; commit or stash them first. Nothing was written.\n${dirty.map((l) => `  ${l}`).join("\n")}`,
       );
-    const all = loadConsoleConfig(cwd);
-    const picked = opt.server ? all.filter((s) => s.id === opt.server) : all;
     if (!picked.length)
       throw new PackageError(
         opt.server

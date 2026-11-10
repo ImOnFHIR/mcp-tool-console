@@ -8,10 +8,11 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadConsoleConfig, type ServerConfig } from "../src/console/config.js";
 import { buildPackage, readRuns } from "../src/package.js";
@@ -184,22 +185,86 @@ test("package: a recorded run whose view fails checkView fails the command", () 
   assert.throws(() => readRuns(dir), /runs\/bad-view\.json: view is not a valid ToolView/);
 });
 
-test("package: a view the server produces must pass checkView", async () => {
+/** A one-file MCP server whose tools are `tools` (name -> view returned by its one preset). */
+function inlineServer(tools: Record<string, unknown>): ServerConfig {
   const dir = tmp();
-  const script = join(dir, "bad-server.mjs");
+  const script = join(dir, "server.mjs");
   writeFileSync(
     script,
     `import { McpServer } from "${sdk("dist/esm/server/mcp.js")}";
 import { StdioServerTransport } from "${sdk("dist/esm/server/stdio.js")}";
-const s = new McpServer({ name: "bad", version: "1" });
-s.registerTool("t", { inputSchema: {}, annotations: { readOnlyHint: true },
-  _meta: { "com.imonfhir/cost": { free: true }, "com.imonfhir/presets": [{ id: "p", label: "p", args: {} }] } },
-  async () => ({ content: [], _meta: { "com.imonfhir/view": { v: 1, status: "good" } } }));
+const s = new McpServer({ name: "inline", version: "1" });
+for (const [name, view] of Object.entries(${JSON.stringify(tools)}))
+  s.registerTool(name, { inputSchema: {}, annotations: { readOnlyHint: true },
+    _meta: { "com.imonfhir/cost": { free: true }, "com.imonfhir/presets": [{ id: "p", label: "p", args: {} }] } },
+    async () => ({ content: [], _meta: { "com.imonfhir/view": view } }));
 await s.connect(new StdioServerTransport());
 `,
   );
-  const config = { ...samples(), id: "bad", command: process.execPath, args: [script], cwd: dir };
-  await assert.rejects(() => buildPackage(config), /t\/p: view is not a valid ToolView/);
+  return { ...samples(), id: "inline", command: process.execPath, args: [script], cwd: dir };
+}
+
+test("package: a view the server produces must pass checkView", async () => {
+  await assert.rejects(
+    () => buildPackage(inlineServer({ t: { v: 1, status: "good" } })),
+    /t\/p: view is not a valid ToolView/,
+  );
+});
+
+test("package: names that differ only in case would collide on disk, so the build fails", async () => {
+  await assert.rejects(
+    () => buildPackage(inlineServer({ Echo: goodView, echo: goodView })),
+    /same file on a case-insensitive disk/,
+  );
+  const built = await buildPackage(inlineServer({ one: goodView, two: goodView }));
+  assert.ok(built.files.has("views/one/p.json"));
+});
+
+test("package: a server's own repository must be clean, not only the folder you run in", () => {
+  const host = repo();
+  const other = repo();
+  writeFileSync(
+    join(host.dir, "console.config.json"),
+    JSON.stringify({
+      servers: [
+        {
+          id: "demo",
+          label: "Demo",
+          command: "node",
+          args: [FAKE],
+          cwd: relative(host.dir, other.dir),
+        },
+      ],
+    }),
+  );
+  host.git("commit", "-q", "-am", "point at the other checkout");
+  assert.equal(cli(host.dir).status, 0, "control: both clean");
+  host.git("clean", "-fdxq");
+  writeFileSync(join(other.dir, "notes.txt"), "changed\n");
+  const r = cli(host.dir);
+  assert.equal(r.status, 1);
+  assert.ok(r.stderr.includes(realpathSync(other.dir)), r.stderr);
+  assert.ok(!existsSync(join(host.dir, "package")));
+});
+
+test("package: only a folder that is exactly an earlier package is replaced", () => {
+  const { dir } = repo();
+  assert.equal(cli(dir, "--server", "demo", "--out", "mine").status, 0);
+  assert.equal(
+    cli(dir, "--server", "demo", "--out", "mine").status,
+    0,
+    "an earlier package is replaced",
+  );
+  // A stray file next to a real PROVENANCE.json: not ours to delete.
+  writeFileSync(join(dir, "mine/keep.txt"), "keep");
+  assert.equal(cli(dir, "--server", "demo", "--out", "mine").status, 1);
+  assert.equal(readFileSync(join(dir, "mine/keep.txt"), "utf8"), "keep");
+  // A PROVENANCE.json that isn't ours (any shape) is not a licence to delete.
+  mkdirSync(join(dir, "src"));
+  writeFileSync(join(dir, "src/PROVENANCE.json"), "{}");
+  writeFileSync(join(dir, "src/code.txt"), "code");
+  assert.equal(cli(dir, "--server", "demo", "--out", "src").status, 1);
+  assert.equal(readFileSync(join(dir, "src/code.txt"), "utf8"), "code");
 });
 
 test("package: an output folder that is not an earlier package is not overwritten", () => {
