@@ -21,6 +21,7 @@
     "./form": "./dist/src/ui/form.js",
     "./styles": "./dist/src/ui/styles.js",
     "./console": "./dist/src/console/index.js",
+    "./package": "./dist/src/package.js",
     "./tool-view.schema.json": "./docs/tool-view.schema.json",
     "./package.json": "./package.json"
   },
