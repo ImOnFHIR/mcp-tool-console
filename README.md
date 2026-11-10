@@ -212,7 +212,9 @@ package/<server-id>/
 
 **Recorded runs.** Each file in `--runs` must be exactly `{ v: 1, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest }` (its `view` must pass `checkView`). Any other shape fails the command and names the file.
 
-**It refuses a dirty tree.** If `git status` shows an uncommitted change to a tracked file, or the folder isn't a git repository, the command exits 1 and writes nothing, not even the output folder. Untracked files don't count: the folders this command writes are untracked until you commit them. Commit your change first, then package, then commit the package.
+**It refuses a dirty tree.** If `git status` shows an uncommitted change to a tracked file, in the folder you run it in or in the repository of any server it will start (its `cwd`), or either isn't in a git repository, the command exits 1 and writes nothing, not even the output folder. Untracked files don't count: the folders this command writes are untracked until you commit them. Commit your change first, then package, then commit the package.
+
+**What it won't overwrite or write.** An existing output folder is replaced only if it is exactly an earlier package (a valid `PROVENANCE.json` and no file it doesn't list). Names that differ only in case (`Echo` and `echo`) fail the build, because they would be one file on a default macOS or Windows disk.
 
 **Deterministic.** Keys are sorted, file lists are sorted, and there are no timestamps. The same inputs give the same bytes, and the repo's own `package/samples/` is checked against a fresh build by a test.
 
