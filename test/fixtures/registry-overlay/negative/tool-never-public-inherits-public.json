@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.example/negative-fixture",
+  "description": "Negative fixture: a never-public tool that inherits public from its server. Must fail.",
+  "version": "0.0.1",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://tools.example.com/mcp"
+    }
+  ],
+  "_meta": {
+    "com.imonfhir/registry": {
+      "modes": [
+        "hosted"
+      ],
+      "tier": "preview",
+      "public": true,
+      "enabled": true,
+      "tools": {
+        "a_tool": {
+          "tier": "never-public"
+        }
+      }
+    }
+  }
+}
