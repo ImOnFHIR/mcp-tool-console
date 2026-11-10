@@ -21,6 +21,29 @@ interface Live {
 }
 
 const LOG_LINES = 200;
+const MAX_TOOL_PAGES = 100;
+
+/** tools/list is paged: follow nextCursor until it runs out (or repeats, or gets silly). */
+async function listAllTools(client: Client): Promise<any[]> {
+  const tools: any[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  let pages = 0;
+  for (let page = 0; page < MAX_TOOL_PAGES; page++) {
+    pages++;
+    const r = await client.listTools(cursor === undefined ? undefined : { cursor });
+    tools.push(...r.tools);
+    cursor = r.nextCursor;
+    if (!cursor || seen.has(cursor)) break;
+    seen.add(cursor);
+  }
+  // Each listTools() call makes the SDK forget the output-schema checks of every earlier page, so
+  // with several pages only the last page's tools would still have their results validated. Give
+  // it the whole list again. (The method is the SDK's own; it isn't in its public types.)
+  if (pages > 1)
+    (client as unknown as { cacheToolMetadata?: (t: any[]) => void }).cacheToolMetadata?.(tools);
+  return tools;
+}
 
 export class Hub {
   private servers = new Map<string, Live>();
@@ -60,16 +83,21 @@ export class Hub {
     const client = new Client({ name: "imonfhir-dev-console", version: "0.1.0" });
     try {
       await client.connect(transport);
-      const { tools } = await client.listTools();
-      s.client = client;
-      s.tools = tools;
-      s.status = "ready";
+      // connect() has already given the transport the SDK's own close handler, which is what fails
+      // a call in flight the moment the server dies. Wrap it; replacing it would leave that call
+      // waiting for its time limit.
+      const sdkOnClose = transport.onclose;
       transport.onclose = () => {
+        sdkOnClose?.();
         if (s.client === client) {
           s.status = "stopped";
           s.error = "The server stopped.";
         }
       };
+      const tools = await listAllTools(client);
+      s.client = client;
+      s.tools = tools;
+      s.status = "ready";
     } catch (e) {
       s.status = "stopped";
       s.error = `Couldn't start: ${(e as Error).message}`;
@@ -103,6 +131,10 @@ export class Hub {
       error: s.error ?? null,
       tools: s.tools,
       /** How to start this server by hand (for the drawer's Inspector command). */
+      command: s.config.command === process.execPath ? "node" : s.config.command,
+      args: s.config.args,
+      /** The folder the server runs in; relative paths in `args` are relative to it. */
+      cwd: s.config.cwd,
       launch: [
         s.config.command === process.execPath ? "node" : s.config.command,
         ...s.config.args,

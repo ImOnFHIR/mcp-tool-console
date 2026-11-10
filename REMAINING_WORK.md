@@ -2,6 +2,30 @@
 
 Newest session first.
 
+## Review findings closed
+Each of the twelve earlier `codex review` P2 findings is fixed and has a test that goes red when the fix is taken out. Console-page tests drive the built page inside happy-dom (`test/helpers/dom-page.ts`).
+
+| # | Finding | Test |
+|---|---|---|
+| 1 | Preset click adds listeners each time | `console page: a preset click adds no listeners; each click is one run` |
+| 2 | Result renders into another tool's page | `console page: a result never lands in another tool's page` |
+| 3 | Filling a preset resets the cost tick | `console page: filling a preset leaves the cost tick as it was` |
+| 4 | Settings don't fold away (`[hidden]` vs `display`) | `console page: [hidden] wins over display: grid and flex` |
+| 5 | Server status not refreshed after a stop | `console page: after a server stops, the next run shows its Restart button` |
+| 6 | Unticked yes/no can't send `false` | `form: an unticked yes/no sends false; a tool whose default is false is left to it` |
+| 7 | Number or boolean choices come back as strings | `form: number and boolean choices come back as numbers and booleans` |
+| 8 | `checkView` throws on non-list `stats`/`sections`/`next` | `checkView: stats, sections or next that aren't lists are problems, not crashes` |
+| 9 | `transport.onclose` replaced the SDK's handler | `hub: a server that dies mid-call fails the call at once, not at the time limit` |
+| 10 | `tools/list` pagination not followed | `hub: tools/list is followed across every page` |
+| 11 | Inspector command omits the working directory | `inspector command: starts from the server's own folder` (and the page's `console page: the Inspector command starts in the server's folder and is quoted`) |
+| 12 | Inspector command arguments not shell-quoted | `inspector command: every word is shell-quoted` (same page test) |
+
+Tests: `npm test` 46/46 (28 before). Also covered, found by the review of these fixes:
+- `hub: results from a tool on an earlier page are still checked against its output schema` (paging must not drop the SDK's output checks)
+- `form: choices that read the same as text (1 and "1") still come back as picked`
+- `console page: a Try click on a folded page unfolds the form to show progress and problems`
+- `hub: the overview says where a server runs, for the Inspector command`
+
 ## 2026-11-08 session (repo created)
 Completed:
 - Moved the tool contract, ToolView v1, renderer, form and dev console out of member-match-decoy-lab (`PROVENANCE.md`).
@@ -12,18 +36,6 @@ Completed:
   3. the cost tick stayed ticked across runs
   4. a table cell's status could inject HTML; `checkView` now checks cell statuses too
 
-Remaining (`codex review` P2 findings, not yet fixed):
-1. Console page: a preset click adds another set of listeners each time, so repeated Try clicks slow the page down.
-2. Console page: a result can render into another tool's page if you navigate away while it runs.
-3. Console page: filling a preset resets the visible cost tick.
-4. Console page: after a run the settings don't fold away (`display: grid` overrides `[hidden]`), and the same applies to the settings line.
-5. Console page: server status isn't refreshed after a server stops, so Restart can stay hidden.
-6. Form: an unticked yes/no can't send `false`.
-7. Form: number or boolean choices come back as strings.
-8. `checkView`: `stats`, `sections` or `next` that aren't lists throw instead of returning problems.
-9. Hub: assigning `transport.onclose` replaces the SDK's own handler, so a server that dies mid-call waits for the timeout.
-10. Hub: `tools/list` pagination isn't followed.
-11. Inspector command: it leaves out the server's working directory.
-12. Inspector command: arguments aren't shell-quoted.
+Remaining: nothing from that review; the twelve findings are closed (section above).
 
 Tests: `npm test` 28/28. Leak guard (member-match-decoy-lab's, pointed at this repo): 41 files, 0 violations. gitleaks: no leaks.

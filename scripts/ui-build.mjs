@@ -7,6 +7,8 @@ import { TOKENS, VIEW_CSS } from "../dist/src/ui/styles.js";
 const CONSOLE_CSS = `
 /* Layout: top bar; left nav of servers and tools; one full-width tool column; drawer slides over on the right. */
 * { box-sizing: border-box; }
+/* An element's own display (grid, flex) must never keep a [hidden] element on screen. */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--body); }
 a { color: var(--accent); }

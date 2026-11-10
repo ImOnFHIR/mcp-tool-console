@@ -65,7 +65,14 @@ export function checkView(v: unknown): string[] {
   if (!STATUSES.includes(v.status)) p.push(`status must be one of ${STATUSES.join(", ")}`);
   if (!str(v.headline)) p.push("headline is required");
   else if (/\n/.test(v.headline)) p.push("headline must be one line");
-  for (const [i, s] of (v.stats ?? []).entries()) {
+  // An optional list that isn't a list is a problem to report, never a crash.
+  const list = (x: unknown, where: string): any[] => {
+    if (x === undefined || x === null) return [];
+    if (Array.isArray(x)) return x;
+    p.push(`${where} must be a list`);
+    return [];
+  };
+  for (const [i, s] of list(v.stats, "stats").entries()) {
     if (!str(s?.label) || typeof s?.value !== "string") p.push(`stats[${i}] needs label and value`);
     status(s?.status, `stats[${i}]`);
   }
@@ -85,7 +92,7 @@ export function checkView(v: unknown): string[] {
   };
   if (v.bullets !== undefined) bullets(v.bullets, "bullets");
   const ids = new Set<string>();
-  for (const [i, s] of (v.sections ?? []).entries()) {
+  for (const [i, s] of list(v.sections, "sections").entries()) {
     const w = `sections[${i}]`;
     if (!str(s?.id) || !str(s?.title)) p.push(`${w} needs id and title`);
     if (ids.has(s?.id)) p.push(`${w}: duplicate id ${s.id}`);
@@ -114,7 +121,7 @@ export function checkView(v: unknown): string[] {
       // Unknown kinds are allowed (forward compatible): renderers show them as code.
     }
   }
-  for (const [i, n] of (v.next ?? []).entries())
+  for (const [i, n] of list(v.next, "next").entries())
     if (!str(n?.label) || !isObj(n?.patch)) p.push(`next[${i}] needs label and patch`);
   const size = new TextEncoder().encode(JSON.stringify(v)).length; // works in Node and the browser
   if (size > LIMITS.viewBytes)

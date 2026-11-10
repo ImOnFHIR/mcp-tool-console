@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { renderView, requiredText, esc } from "../src/ui/render.js";
 import { renderForm, formToArgs, widgetFor, argsSummary } from "../src/ui/form.js";
 import { checkView, type ToolView } from "../src/ui/view.js";
+import { inspectorCommand, shellQuote } from "../src/ui/inspector.js";
 
 const views = readdirSync("test/views").map(
   (f) => [f, JSON.parse(readFileSync(`test/views/${f}`, "utf8")) as ToolView] as const,
@@ -160,4 +161,129 @@ test("render: a status that isn't one of the five can't inject HTML anywhere", (
   assert.match(problems, /rows\[0\]\.a: status must be one of/);
   assert.match(problems, /stats\[0\]: status/);
   assert.match(problems, /bullets\[0\]: status/);
+});
+
+test("form: an unticked yes/no sends false; a tool whose default is false is left to it", () => {
+  const sch = {
+    type: "object",
+    properties: {
+      strict: { type: "boolean", title: "Strict" },
+      quiet: { type: "boolean", title: "Quiet", default: false },
+      verbose: { type: "boolean", title: "Verbose", default: true },
+    },
+  };
+  assert.deepEqual(formToArgs(sch, []).args, { strict: false, verbose: false });
+  assert.deepEqual(
+    formToArgs(sch, [
+      ["strict", "true"],
+      ["quiet", "true"],
+    ]).args,
+    {
+      strict: true,
+      quiet: true,
+      verbose: false,
+    },
+  );
+  // A default-true switch is drawn ticked, so leaving it alone still means "yes".
+  assert.match(renderForm(sch, {}), /id="f-verbose"[^>]*checked/);
+  assert.doesNotMatch(renderForm(sch, {}), /id="f-strict"[^>]*checked/);
+});
+
+test("form: number and boolean choices come back as numbers and booleans", () => {
+  const sch = {
+    type: "object",
+    properties: {
+      level: { enum: [1, 2, 3] },
+      exact: {
+        oneOf: [
+          { const: true, title: "Yes" },
+          { const: false, title: "No" },
+        ],
+      },
+      sizes: { type: "array", items: { enum: [10, 20] } },
+      mode: { enum: ["a", "b"] },
+    },
+  };
+  assert.deepEqual(
+    formToArgs(sch, [
+      ["level", "2"],
+      ["exact", "false"],
+      ["sizes", "10"],
+      ["sizes", "20"],
+      ["mode", "b"],
+    ]).args,
+    { level: 2, exact: false, sizes: [10, 20], mode: "b" },
+  );
+});
+
+test("checkView: stats, sections or next that aren't lists are problems, not crashes", () => {
+  const base = { v: 1, status: "good", headline: "h" };
+  for (const field of ["stats", "sections", "next"]) {
+    for (const bad of [{ a: 1 }, "text", 7, true]) {
+      let problems: string[] = [];
+      assert.doesNotThrow(() => (problems = checkView({ ...base, [field]: bad })), field);
+      assert.deepEqual(problems, [`${field} must be a list`]);
+    }
+  }
+  assert.deepEqual(checkView({ ...base, stats: [], sections: [], next: [] }), []);
+});
+
+test("inspector command: starts from the server's own folder", () => {
+  const cmd = inspectorCommand(
+    { command: "node", args: ["dist/mcp.js"], cwd: "/work/tools" },
+    "echo",
+    { text: "hi" },
+  );
+  assert.equal(
+    cmd,
+    `cd /work/tools && npx @modelcontextprotocol/inspector --cli node dist/mcp.js --method tools/call --tool-name echo --tool-arg 'text="hi"'`,
+  );
+  assert.match(inspectorCommand(undefined, "echo", {}), /--cli <server command> --method/);
+});
+
+test("inspector command: every word is shell-quoted", () => {
+  assert.equal(shellQuote("plain-word_1.js"), "plain-word_1.js");
+  assert.equal(shellQuote("two words"), "'two words'");
+  assert.equal(shellQuote("it's"), `'it'\\''s'`);
+  assert.equal(shellQuote("$(rm -rf ~); `x` & y"), "'$(rm -rf ~); `x` & y'");
+  const cmd = inspectorCommand(
+    { command: "node", args: ["my server.js", "--name", "O'Brien; echo hi"], cwd: "/a b/c" },
+    "t",
+    { q: "it's $HOME" },
+  );
+  assert.equal(
+    cmd,
+    `cd '/a b/c' && npx @modelcontextprotocol/inspector --cli node 'my server.js' --name 'O'\\''Brien; echo hi' --method tools/call --tool-name t --tool-arg 'q="it'\\''s $HOME"'`,
+  );
+});
+
+test('form: choices that read the same as text (1 and "1") still come back as picked', () => {
+  const sch = {
+    type: "object",
+    properties: {
+      pick: {
+        oneOf: [
+          { const: 1, title: "Number" },
+          { const: "1", title: "Text" },
+        ],
+      },
+      many: { type: "array", items: { enum: [2, "2"] } },
+    },
+  };
+  const html = renderForm(sch, { pick: "1", many: [2, "2"] });
+  const values = [
+    ...html.matchAll(/<option value="([^"]*)"|<input type="checkbox"[^>]*value="([^"]*)"/g),
+  ].map((m) => m[1] ?? m[2]);
+  values.splice(values.indexOf(""), 1); // the select's "Default" option
+  assert.equal(new Set(values).size, 4, "every option has its own value");
+  // The page posts each option's value; decoding gives back exactly what was picked.
+  const post = (pick: string, ...many: string[]) =>
+    formToArgs(sch, [["pick", pick], ...many.map((m) => ["many", m] as [string, string])]).args;
+  const [numberValue, textValue] = values;
+  assert.deepEqual(post(numberValue).pick, 1);
+  assert.deepEqual(post(textValue).pick, "1");
+  assert.deepEqual(post("x", values[2], values[3]).many, [2, "2"]);
+  // Shown back as the settings summary and as the pre-selected option.
+  assert.match(html, new RegExp(`<option value="${textValue}" selected>Text`));
+  assert.equal(argsSummary(sch, { pick: "1" }), "pick: Text");
 });
