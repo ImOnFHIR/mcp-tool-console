@@ -65,7 +65,7 @@ export function sortKeys(x: unknown): unknown {
   if (isObj(x))
     return Object.fromEntries(
       Object.keys(x)
-        .sort()
+        .toSorted()
         .map((k) => [k, sortKeys(x[k])]),
     );
   return x;

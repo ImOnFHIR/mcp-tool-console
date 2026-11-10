@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "com.imonfhir/cost": {
+      "free": true
+    },
+    "com.imonfhir/presets": [
+      {
+        "args": {},
+        "id": "write",
+        "label": "Try write"
+      }
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false
+  },
+  "execution": {
+    "taskSupport": "forbidden"
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "properties": {},
+    "type": "object"
+  },
+  "name": "write_thing",
+  "title": "Write a thing"
+}

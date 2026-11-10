@@ -1,0 +1,14 @@
+{
+  "files": {
+    "package.json": "97becadfa4fb3a863f9e35136d76d3cadec9ad00966b7c7818364f6d27c22d96",
+    "tools/die.json": "a8b173d626e203a6a81d237cda842d929ba5cb3453a7a67d8755532f4bf14f9d",
+    "tools/echo.json": "68c219bde148a89a7188463d81c6c7b7b7396457b016498124eae18d3537908d",
+    "tools/env_probe.json": "e5ddaa3b64200c673f89099d52d386c6b295c0668745d027c20c93501c387ab5",
+    "tools/hang.json": "857bffdefd5a226535c650964ea955c15a91b9ef211024ac0fe07b038b300902",
+    "tools/paid.json": "32b3be268ab570db59fd3a9b0b8636b6008ebb3b24853f35911d10ef0ad1de38",
+    "tools/write_thing.json": "e68c5632c680823251b24c6b813515e2725f70a687ed7a9da7662d41fd995680",
+    "views/echo/hello.json": "05780e8c8aba978d73d7d5c9fc47a2268a6ee94cde8a3b8bb4dc29085fc43956"
+  },
+  "packageDigest": "sha256:849cccaf7206bd4ffa3f5ac753f26c48eb8b8d73eda5f5493892d29f81456b5d",
+  "v": 1
+}
