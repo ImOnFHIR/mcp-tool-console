@@ -7,7 +7,7 @@ Done:
 - `mcp-tool-console package [--server <id>] [--out <dir>] [--runs <dir>]`, exported as `mcp-tool-console/package` (README "Packages").
 - Presets are run only for tools that are `readOnlyHint: true` and declared free; every view passes `checkView`.
 - A dirty tree (tracked changes in the run folder or in any selected server's repository, or no git repository) is refused: exit 1, nothing written.
-- An existing output folder is replaced only if it is exactly an earlier package, hashes and digest verified; case-colliding and Windows-unsafe names fail the build.
+- An existing output folder is replaced only if it is exactly an earlier package, hashes and digest verified; case-colliding, Windows-unsafe and overlong names fail the build; a recording for a tool two packaged servers share is refused as ambiguous.
 - Recorded runs are shape-checked; output is deterministic; `PROVENANCE.json` carries per-file hashes and `packageDigest` (no commit SHA).
 - `package/samples/` is committed, and a drift test regenerates it and compares every file and the file list.
 - The fake server's tools gained presets so the gate has something to refuse.
@@ -17,7 +17,7 @@ Remaining:
 - Any site consumer pinning a `packageDigest`.
 - Signed or attested provenance.
 
-Tests: `npm test` 63/63 (47 before, plus 16 in `test/package.test.ts`). Each control was removed to confirm its test goes red.
+Tests: `npm test` 66/66 (47 before, plus 19 in `test/package.test.ts`). Each control was removed to confirm its test goes red.
 
 ## Review findings closed
 Each of the twelve earlier `codex review` P2 findings is fixed and has a test that goes red when the fix is taken out. Console-page tests drive the built page inside happy-dom (`test/helpers/dom-page.ts`).
