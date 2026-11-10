@@ -1,0 +1,16 @@
+{
+  "name": "echo",
+  "title": "Echo",
+  "description": "Says back what it was given.",
+  "inputSchema": { "type": "object", "properties": { "text": { "type": "string", "title": "Text" } } },
+  "annotations": { "readOnlyHint": true },
+  "_meta": {
+    "com.imonfhir/about": {
+      "whatItIs": ["A synthetic example tool."],
+      "whatItDoes": ["Returns its input."],
+      "howToUse": ["Type some text and press Run."],
+      "safeToRun": ["Synthetic data. Read-only. Free."]
+    },
+    "com.imonfhir/cost": { "free": true }
+  }
+}

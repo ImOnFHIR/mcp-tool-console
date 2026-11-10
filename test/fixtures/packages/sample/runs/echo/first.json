@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "recorded": "recorded-run-1",
+  "tool": "echo",
+  "args": { "text": "hello" },
+  "structuredContent": { "said": "hello" },
+  "view": { "v": 1, "status": "good", "headline": "You said hello." },
+  "model": "none",
+  "costUsd": 0,
+  "lockDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}
