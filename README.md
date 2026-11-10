@@ -213,6 +213,12 @@ npm run console        # the console with this repo's sample tools (run npm test
 ```
 In VS Code, each of these is a task: Terminal → Run Task.
 
+## Registry overlay
+
+`docs/registry-overlay.schema.json` is a JSON Schema for the rules a registry entry must meet on top of an MCP Registry `server.json`. Validate the entry against the published `server.json` schema separately; this file adds only the rules on `_meta["com.imonfhir/registry"]` (modes, tier, public ceiling, local launch shape) and on a committed entry's remotes and packages (https remotes with public hosts, no headers or package environment variables).
+
+It is shipped in the package as `docs/registry-overlay.schema.json`. `test/registry-overlay.test.ts` pins a copy of the published schema by hash, checks a valid entry, and checks that each negative fixture in `test/fixtures/registry-overlay/negative/` is a valid `server.json` that fails the overlay at its own rule. The validator (`ajv`) is a dev dependency used by that test only; the console never validates entries at runtime.
+
 ## Provenance and licence
 
 - This code was moved out of member-match-decoy-lab so other tools can share it; see [PROVENANCE.md](PROVENANCE.md).
