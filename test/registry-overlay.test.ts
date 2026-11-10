@@ -61,7 +61,7 @@ test("registry overlay: the negative fixtures are exactly the ones listed", () =
   const files = readdirSync(join(FIX, "negative"))
     .filter((f) => f.endsWith(".json"))
     .map((f) => f.replace(/\.json$/, ""));
-  assert.deepEqual(files.sort(), Object.keys(NEGATIVE).sort());
+  assert.deepEqual(files.toSorted(), Object.keys(NEGATIVE).toSorted());
 });
 
 for (const [id, path] of Object.entries(NEGATIVE)) {
