@@ -601,6 +601,51 @@ test("hosted hub: a portal that dropped our session shows as stopped, and Restar
   }
 });
 
+test("hosted hub: a JSON-RPC error numbered 404 is not a lost session", async () => {
+  // The portal answers 200 with an application-level error whose code happens to be 404.
+  const appError: typeof fetch = async (input, init) => {
+    const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+    if (body?.method === "tools/call")
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: { code: 404, message: "no such thing" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    return upstream.viaHttps(input, init);
+  };
+  const cfg = upstreamServerConfig(loadHostedConfig(goodEnv()));
+  const h = new Hub([{ ...cfg, upstream: { ...cfg.upstream!, fetch: appError } }], {
+    hosted: true,
+  });
+  await h.start("portal");
+  try {
+    await assert.rejects(h.call("portal", "echo", {}, "app-1"), /no such thing/);
+    assert.equal(h.overview()[0].status, "ready");
+  } finally {
+    await h.stopAll();
+  }
+});
+
+test("hosted hub: stopping or restarting ends the portal session", async () => {
+  const stateful = await startFakeUpstream({ stateful: true });
+  try {
+    const cfg = upstreamServerConfig(loadHostedConfig(goodEnv()));
+    const h = new Hub([{ ...cfg, upstream: { ...cfg.upstream!, fetch: stateful.viaHttps } }], {
+      hosted: true,
+    });
+    await h.start("portal");
+    assert.equal(h.overview()[0].status, "ready", h.overview()[0].error ?? "");
+    assert.deepEqual(stateful.closedSessions, []);
+    await h.stopAll();
+    assert.equal(stateful.closedSessions.length, 1, "the session was left open upstream");
+  } finally {
+    await stateful.close();
+  }
+});
+
 // ── the catalog ─────────────────────────────────────────────────────────────────────────────────
 test("catalog: reads the sample package", async () => {
   const c = await readCatalog(PACKAGES);

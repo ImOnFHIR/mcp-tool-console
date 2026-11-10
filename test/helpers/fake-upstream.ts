@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 export const PORTAL_URL = "https://portal.test/mcp";
@@ -36,7 +37,16 @@ function build() {
   return s;
 }
 
-export async function startFakeUpstream() {
+export async function startFakeUpstream(o: { stateful?: boolean } = {}) {
+  const closedSessions: string[] = [];
+  const sessionTransport = o.stateful
+    ? new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        enableJsonResponse: true,
+        onsessionclosed: (id) => void closedSessions.push(id),
+      })
+    : undefined;
+  if (sessionTransport) await build().connect(sessionTransport);
   const state = { sessionLost: false };
   const seen: Record<string, string | string[] | undefined>[] = [];
   const server: Server = createServer(async (req, res) => {
@@ -47,6 +57,9 @@ export async function startFakeUpstream() {
     }
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
+    const raw = Buffer.concat(chunks).toString("utf8");
+    const body = raw ? JSON.parse(raw) : undefined;
+    if (sessionTransport) return void (await sessionTransport.handleRequest(req, res, body));
     const mcp = build();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
@@ -54,8 +67,7 @@ export async function startFakeUpstream() {
     });
     res.on("close", () => void transport.close());
     await mcp.connect(transport);
-    const raw = Buffer.concat(chunks).toString("utf8");
-    await transport.handleRequest(req, res, raw ? JSON.parse(raw) : undefined);
+    await transport.handleRequest(req, res, body);
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as AddressInfo).port;
@@ -64,5 +76,11 @@ export async function startFakeUpstream() {
     if (u.origin !== "https://portal.test") throw new Error(`unexpected upstream ${u.origin}`);
     return fetch(`http://127.0.0.1:${port}${u.pathname}`, init);
   };
-  return { seen, state, viaHttps, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return {
+    seen,
+    state,
+    closedSessions,
+    viaHttps,
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
 }

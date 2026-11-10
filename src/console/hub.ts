@@ -7,7 +7,10 @@ import {
   StdioClientTransport,
   getDefaultEnvironment,
 } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ServerConfig } from "./config.js";
 
@@ -16,6 +19,8 @@ export type ServerStatus = "starting" | "ready" | "stopped";
 interface Live {
   config: ServerConfig;
   client?: Client;
+  /** Hosted mode: the upstream transport, so its session can be ended on stop. */
+  http?: StreamableHTTPClientTransport;
   status: ServerStatus;
   error?: string;
   log: string[];
@@ -95,13 +100,16 @@ export class Hub {
     s.status = "starting";
     s.error = undefined;
     let transport: Transport;
+    let pendingHttp: StreamableHTTPClientTransport | undefined;
     if (this.opts.hosted) {
       assertHostedUpstream(s.config);
-      transport = new StreamableHTTPClientTransport(new URL(s.config.upstream!.url), {
+      const http = new StreamableHTTPClientTransport(new URL(s.config.upstream!.url), {
         requestInit: { headers: s.config.upstream!.headers },
         fetch: s.config.upstream!.fetch,
         redirectPolicy: "same-origin",
       });
+      transport = http;
+      pendingHttp = http;
     } else {
       const env: Record<string, string> = { ...getDefaultEnvironment() };
       for (const k of s.config.env) if (process.env[k] !== undefined) env[k] = process.env[k]!;
@@ -134,6 +142,7 @@ export class Hub {
       };
       const tools = await listAllTools(client);
       s.client = client;
+      s.http = pendingHttp;
       s.tools = tools;
       s.status = "ready";
     } catch (e) {
@@ -151,7 +160,16 @@ export class Hub {
     const s = this.servers.get(id);
     if (s?.client) {
       const c = s.client;
+      const http = s.http;
       s.client = undefined;
+      s.http = undefined;
+      // A stateful portal keeps our session until told it is over; closing the transport alone
+      // would leave one behind on every restart. Bounded, so a dead portal can't hold a restart.
+      if (http)
+        await Promise.race([
+          http.terminateSession().catch(() => {}),
+          new Promise((r) => setTimeout(r, 3000).unref()),
+        ]);
       await c.close().catch(() => {});
     }
     if (s) s.status = "stopped";
@@ -204,10 +222,11 @@ export class Hub {
     } catch (e) {
       // A portal that has dropped our session answers 404 and never closes the connection. Say
       // so, so the page offers Restart instead of reusing a session that is gone.
-      if (s.config.upstream && (e as { code?: unknown }).code === 404) {
+      if (e instanceof StreamableHTTPError && e.code === 404) {
         // Several calls can fail together; only the first to arrive changes the shared state.
         if (s.client === client) {
           s.client = undefined;
+          s.http = undefined;
           s.status = "stopped";
           s.error = "The portal ended the session.";
         }
