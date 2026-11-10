@@ -44,6 +44,16 @@ export interface BuiltPackage {
 }
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+/** Names Windows refuses as a file name, with or without an extension. */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+
+/** A name safe to use as a file or folder name on any disk (plain characters, no trailing dot, not reserved). */
+export const isSafeName = (n: unknown): n is string =>
+  typeof n === "string" &&
+  SAFE.test(n) &&
+  !n.endsWith(".") &&
+  !WINDOWS_RESERVED.test(n.split(".")[0]);
+
 const RUN_KEYS = [
   "args",
   "costUsd",
@@ -136,7 +146,7 @@ export function readRuns(dir: string): RecordedRun[] {
     a.name < b.name ? -1 : 1,
   )) {
     if (e.name.startsWith(".")) continue;
-    if (!e.isFile() || !e.name.endsWith(".json") || !SAFE.test(e.name))
+    if (!e.isFile() || !e.name.endsWith(".json") || !isSafeName(e.name))
       throw new PackageError(`runs/${e.name}: only plain .json files are allowed`);
     const text = readFileSync(join(dir, e.name), "utf8");
     let r: any;
@@ -155,7 +165,7 @@ export function readRuns(dir: string): RecordedRun[] {
     if (r.v !== 1) bad("v must be 1");
     for (const k of ["recorded", "tool", "model", "lockDigest"])
       if (typeof r[k] !== "string" || !r[k].trim()) bad(`${k} must be a non-empty string`);
-    if (!SAFE.test(r.tool)) bad("tool is not a usable folder name");
+    if (!isSafeName(r.tool)) bad("tool is not a usable folder name");
     if (!isObj(r.args)) bad("args must be an object");
     if (!(typeof r.costUsd === "number" && Number.isFinite(r.costUsd) && r.costUsd >= 0))
       bad("costUsd must be a number, 0 or more");
@@ -187,7 +197,7 @@ export async function buildPackage(
     const skipped: BuiltPackage["skipped"] = [];
     const names = new Set<string>();
     for (const t of tools) {
-      if (typeof t.name !== "string" || !SAFE.test(t.name))
+      if (!isSafeName(t.name))
         throw new PackageError(`${config.id}: tool name "${t.name}" is not usable as a file name`);
       if (names.has(t.name)) throw new PackageError(`${config.id}: tool ${t.name} is listed twice`);
       names.add(t.name);
@@ -198,7 +208,7 @@ export async function buildPackage(
       if (!Array.isArray(presets)) throw new PackageError(`${t.name}: presets must be a list`);
       const ids = new Set<string>();
       for (const p of presets) {
-        if (!isObj(p) || typeof p.id !== "string" || !SAFE.test(p.id) || !isObj(p.args))
+        if (!isObj(p) || !isSafeName(p.id) || !isObj(p.args))
           throw new PackageError(`${t.name}: a preset needs a plain id and an args object`);
         if (ids.has(p.id)) throw new PackageError(`${t.name}: preset ${p.id} is listed twice`);
         ids.add(p.id);
@@ -274,20 +284,23 @@ export function provenance(files: Files): string {
 }
 
 /**
- * True when `out` holds exactly an earlier package: a valid PROVENANCE.json and no file it doesn't
- * list. Anything else in there belongs to someone else.
+ * True when `out` holds exactly an earlier package, untouched: PROVENANCE.json, every file it lists
+ * with the hash it records, nothing else, and a packageDigest that recomputes. Anything else in
+ * there is someone else's work (or has been edited by hand) and is not ours to delete.
  */
 function isEarlierPackage(out: string): boolean {
   try {
     const prov = JSON.parse(readFileSync(join(out, "PROVENANCE.json"), "utf8"));
-    if (prov?.v !== 1 || !isObj(prov.files) || !/^sha256:[0-9a-f]{64}$/.test(prov.packageDigest))
-      return false;
-    const owned = new Set([...Object.keys(prov.files), "PROVENANCE.json"]);
+    if (prov?.v !== 1 || !isObj(prov.files)) return false;
     const walk = (dir: string, pre: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory() ? walk(join(dir, e.name), `${pre}${e.name}/`) : [pre + e.name],
       );
-    return walk(out, "").every((f) => owned.has(f));
+    // The exact file set, each file as recorded, and the digest recomputed from them.
+    const found = walk(out, "").filter((f) => f !== "PROVENANCE.json");
+    if (found.toSorted().join("\n") !== Object.keys(prov.files).toSorted().join("\n")) return false;
+    const files: Files = new Map(found.map((f) => [f, readFileSync(join(out, f), "utf8")]));
+    return provenance(files) === canonical(prov);
   } catch {
     return false;
   }

@@ -214,7 +214,7 @@ package/<server-id>/
 
 **It refuses a dirty tree.** If `git status` shows an uncommitted change to a tracked file, in the folder you run it in or in the repository of any server it will start (its `cwd`), or either isn't in a git repository, the command exits 1 and writes nothing, not even the output folder. Untracked files don't count: the folders this command writes are untracked until you commit them. Commit your change first, then package, then commit the package.
 
-**What it won't overwrite or write.** An existing output folder is replaced only if it is exactly an earlier package (a valid `PROVENANCE.json` and no file it doesn't list). Names that differ only in case (`Echo` and `echo`) fail the build, because they would be one file on a default macOS or Windows disk.
+**What it won't overwrite or write.** An existing output folder is replaced only if it is exactly an earlier package, untouched (every file listed in its `PROVENANCE.json` with the recorded hash, nothing else, and a `packageDigest` that recomputes); delete a hand-edited one first. Names that would collide or can't be a file name on a default macOS or Windows disk fail the build: `Echo` next to `echo`, a trailing dot, or `aux`.
 
 **Deterministic.** Keys are sorted, file lists are sorted, and there are no timestamps. The same inputs give the same bytes, and the repo's own `package/samples/` is checked against a fresh build by a test.
 

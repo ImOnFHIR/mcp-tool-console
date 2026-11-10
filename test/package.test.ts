@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadConsoleConfig, type ServerConfig } from "../src/console/config.js";
-import { buildPackage, readRuns } from "../src/package.js";
+import { buildPackage, isSafeName, readRuns } from "../src/package.js";
 
 const sdk = (p: string) => pathToFileURL(resolve("node_modules/@modelcontextprotocol/sdk", p)).href;
 const CLI = resolve("dist/src/console/cli.js");
@@ -245,6 +245,37 @@ test("package: a server's own repository must be clean, not only the folder you 
   assert.equal(r.status, 1);
   assert.ok(r.stderr.includes(realpathSync(other.dir)), r.stderr);
   assert.ok(!existsSync(join(host.dir, "package")));
+});
+
+test("package: a package edited by hand, or with stale hashes, is not replaced", () => {
+  const { dir } = repo();
+  assert.equal(cli(dir, "--server", "demo", "--out", "mine").status, 0);
+  const file = join(dir, "mine/tools/echo.json");
+  const original = readFileSync(file, "utf8");
+  writeFileSync(file, original + " ");
+  assert.equal(cli(dir, "--server", "demo", "--out", "mine").status, 1);
+  assert.equal(readFileSync(file, "utf8"), original + " ", "left as it was");
+  writeFileSync(file, original);
+  const prov = join(dir, "mine/PROVENANCE.json");
+  const p = JSON.parse(readFileSync(prov, "utf8"));
+  p.packageDigest = `sha256:${"0".repeat(64)}`;
+  writeFileSync(prov, JSON.stringify(p));
+  assert.equal(
+    cli(dir, "--server", "demo", "--out", "mine").status,
+    1,
+    "digest that does not recompute",
+  );
+});
+
+test("package: names Windows can't hold as one file each are refused", async () => {
+  for (const bad of ["echo.", "aux", "NUL", "com1.txt"])
+    await assert.rejects(
+      () => buildPackage(inlineServer({ [bad]: goodView })),
+      /not usable as a file name/,
+      bad,
+    );
+  assert.ok(isSafeName("echo") && isSafeName("a.b-c_d"));
+  assert.ok(!isSafeName("echo.") && !isSafeName("Aux.json") && !isSafeName(".hidden"));
 });
 
 test("package: only a folder that is exactly an earlier package is replaced", () => {
