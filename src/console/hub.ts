@@ -193,10 +193,11 @@ export class Hub {
     const s = this.servers.get(id);
     if (!s?.client || s.status !== "ready")
       throw new Error(`${s?.config.label ?? id} isn't running. Restart it from the console.`);
+    const client = s.client;
     const ac = new AbortController();
     this.calls.set(callId, ac);
     try {
-      return await s.client.callTool({ name, arguments: args }, undefined, {
+      return await client.callTool({ name, arguments: args }, undefined, {
         signal: ac.signal,
         timeout: s.config.timeoutSeconds * 1000,
       });
@@ -204,11 +205,13 @@ export class Hub {
       // A portal that has dropped our session answers 404 and never closes the connection. Say
       // so, so the page offers Restart instead of reusing a session that is gone.
       if (s.config.upstream && (e as { code?: unknown }).code === 404) {
-        const c = s.client;
-        s.client = undefined;
-        s.status = "stopped";
-        s.error = "The portal ended the session.";
-        await c.close().catch(() => {});
+        // Several calls can fail together; only the first to arrive changes the shared state.
+        if (s.client === client) {
+          s.client = undefined;
+          s.status = "stopped";
+          s.error = "The portal ended the session.";
+        }
+        await client.close().catch(() => {});
       }
       throw e;
     } finally {

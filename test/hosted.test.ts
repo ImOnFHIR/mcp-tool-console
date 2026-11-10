@@ -579,7 +579,15 @@ test("hosted hub: a portal that dropped our session shows as stopped, and Restar
   try {
     assert.equal(h.overview()[0].status, "ready");
     upstream.state.sessionLost = true;
-    await assert.rejects(h.call("portal", "echo", {}, "lost-1"), /session not found/);
+    // Two tabs hit the dead session together: both fail cleanly (the portal's answer, or the closed connection), neither crashes.
+    const both = await Promise.allSettled([
+      h.call("portal", "echo", {}, "lost-1"),
+      h.call("portal", "echo", {}, "lost-1b"),
+    ]);
+    for (const r of both) {
+      assert.equal(r.status, "rejected");
+      assert.match(String((r as PromiseRejectedResult).reason), /session not found|closed/i);
+    }
     assert.equal(h.overview()[0].status, "stopped");
     assert.equal(h.overview()[0].error, "The portal ended the session.");
     upstream.state.sessionLost = false;
