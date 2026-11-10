@@ -244,6 +244,58 @@ test("access jwt: a rotated key is found by one refetch, and an unknown key can'
   assert.equal(fetches - fetchesBefore, 1, "guessing key ids must not trigger a fetch each time");
 });
 
+test("access jwt: overlapping requests share one key fetch instead of failing", async () => {
+  const pair = makePair();
+  let fetches = 0;
+  const v = createAccessVerifier({
+    teamDomain: TEAM,
+    aud: AUD,
+    ownerEmail: OWNER,
+    now: () => NOW,
+    fetchJwks: async () => {
+      fetches++;
+      await new Promise((r) => setTimeout(r, 30));
+      return { keys: [pair.jwk] };
+    },
+  });
+  const verdicts = await Promise.all([1, 2, 3, 4].map(() => v(sign(pair, fresh()))));
+  assert.deepEqual(
+    verdicts.map((x) => x.ok),
+    [true, true, true, true],
+  );
+  assert.equal(fetches, 1);
+});
+
+test("access jwt: keys older than the cache time are not trusted when the refresh fails", async () => {
+  const pair = makePair();
+  let down = false;
+  let clock = NOW;
+  const v = createAccessVerifier({
+    teamDomain: TEAM,
+    aud: AUD,
+    ownerEmail: OWNER,
+    now: () => clock,
+    cacheSeconds: 600,
+    minRefetchSeconds: 30,
+    fetchJwks: async () => {
+      if (down) throw new Error("down");
+      return { keys: [pair.jwk] };
+    },
+  });
+  assert.equal((await v(sign(pair, claims({}, clock)))).ok, true);
+  down = true;
+  clock += 300; // inside the cache time: still served from the cache
+  assert.equal((await v(sign(pair, claims({}, clock)))).ok, true);
+  clock += 400; // past it, and the certs endpoint is down: nobody gets in
+  assert.deepEqual(await v(sign(pair, claims({}, clock))), {
+    ok: false,
+    reason: "jwks-unavailable",
+  });
+  down = false;
+  clock += 31; // the endpoint is back and the owner is let in again
+  assert.equal((await v(sign(pair, claims({}, clock)))).ok, true);
+});
+
 test("access jwt: if the key set can't be fetched, nobody gets in", async () => {
   const pair = makePair();
   const v = createAccessVerifier({
@@ -519,6 +571,26 @@ test("hosted hub: one https upstream only", () => {
   );
   assert.throws(() => new Hub([base, { ...base, id: "two" }], { hosted: true }), /exactly one/);
   assert.throws(() => new Hub([], { hosted: true }), /exactly one/);
+});
+
+test("hosted hub: a portal that dropped our session shows as stopped, and Restart brings it back", async () => {
+  const h = hostedHub();
+  await h.start("portal");
+  try {
+    assert.equal(h.overview()[0].status, "ready");
+    upstream.state.sessionLost = true;
+    await assert.rejects(h.call("portal", "echo", {}, "lost-1"), /session not found/);
+    assert.equal(h.overview()[0].status, "stopped");
+    assert.equal(h.overview()[0].error, "The portal ended the session.");
+    upstream.state.sessionLost = false;
+    await h.start("portal");
+    assert.equal(h.overview()[0].status, "ready");
+    const r = await h.call("portal", "echo", { text: "back" }, "lost-2");
+    assert.equal((r as any).content[0].text, "echo: back");
+  } finally {
+    upstream.state.sessionLost = false;
+    await h.stopAll();
+  }
 });
 
 // ── the catalog ─────────────────────────────────────────────────────────────────────────────────

@@ -200,6 +200,17 @@ export class Hub {
         signal: ac.signal,
         timeout: s.config.timeoutSeconds * 1000,
       });
+    } catch (e) {
+      // A portal that has dropped our session answers 404 and never closes the connection. Say
+      // so, so the page offers Restart instead of reusing a session that is gone.
+      if (s.config.upstream && (e as { code?: unknown }).code === 404) {
+        const c = s.client;
+        s.client = undefined;
+        s.status = "stopped";
+        s.error = "The portal ended the session.";
+        await c.close().catch(() => {});
+      }
+      throw e;
     } finally {
       this.calls.delete(callId);
     }

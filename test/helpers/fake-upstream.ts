@@ -37,9 +37,14 @@ function build() {
 }
 
 export async function startFakeUpstream() {
+  const state = { sessionLost: false };
   const seen: Record<string, string | string[] | undefined>[] = [];
   const server: Server = createServer(async (req, res) => {
     seen.push({ ...req.headers });
+    if (state.sessionLost) {
+      res.writeHead(404, { "content-type": "application/json" });
+      return void res.end(JSON.stringify({ error: "session not found" }));
+    }
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
     const mcp = build();
@@ -59,5 +64,5 @@ export async function startFakeUpstream() {
     if (u.origin !== "https://portal.test") throw new Error(`unexpected upstream ${u.origin}`);
     return fetch(`http://127.0.0.1:${port}${u.pathname}`, init);
   };
-  return { seen, viaHttps, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return { seen, state, viaHttps, close: () => new Promise<void>((r) => server.close(() => r())) };
 }

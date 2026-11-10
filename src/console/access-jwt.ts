@@ -102,20 +102,22 @@ export function createAccessVerifier(o: AccessVerifierOptions) {
     return inflight;
   }
 
+  const stale = () => now() - fetchedAt >= cacheFor;
+  const mayFetch = () => now() - lastAttempt >= minRefetch;
+
+  /** The key for `kid`, or why there is none. Keys older than the cache time are never trusted. */
   async function keyFor(kid: string): Promise<KeyObject | Refusal> {
-    try {
-      const mayFetch = () => now() - lastAttempt >= minRefetch;
-      if (now() - fetchedAt >= cacheFor && mayFetch()) await refresh().catch(() => {});
-      let k = keys.get(kid);
-      if (!k && mayFetch()) {
-        await refresh();
-        k = keys.get(kid);
-      }
-      if (k) return k;
-      return keys.size === 0 && fetchedAt === -Infinity ? "jwks-unavailable" : "unknown-key";
-    } catch {
-      return "jwks-unavailable";
+    // A fetch someone else started settles first, however recently it began.
+    if (inflight) await inflight.catch(() => {});
+    if (stale() && mayFetch()) await refresh().catch(() => {});
+    if (stale()) return "jwks-unavailable";
+    let k = keys.get(kid);
+    if (!k && mayFetch()) {
+      await refresh().catch(() => {});
+      if (stale()) return "jwks-unavailable";
+      k = keys.get(kid);
     }
+    return k ?? "unknown-key";
   }
 
   return async function verify(token: string | undefined): Promise<Verdict> {
