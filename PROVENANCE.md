@@ -20,3 +20,11 @@ Moved from [ImOnFHIR/member-match-decoy-lab](https://github.com/ImOnFHIR/member-
 | `src/package.ts` | the builder script of the repo named above | Made generic (any configured server, presets from each tool's own `_meta`); refuses a dirty tree; output is deterministic; no commit in PROVENANCE |
 
 Every name in the test data is synthetic. It passed that repo's leak guard (`npm run leak:check`) before the move.
+
+## Registry overlay fixtures
+
+| Here | From | Notes |
+|---|---|---|
+| `test/fixtures/registry-overlay/server.schema.2025-12-11.json` | The MCP Registry's published server.json schema, <https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json> | Byte-identical copy, unmodified. sha256 `3fba09590c99f61735d234822279f4223fab9e300c0a81e81c91ab62a4114de0`, pinned in `test/registry-overlay.test.ts`. |
+| `docs/registry-overlay.schema.json`, `test/fixtures/registry-overlay/negative/*.json`, `valid.json` | Written by this repo's author | Synthetic (`example.com` names). |
+
