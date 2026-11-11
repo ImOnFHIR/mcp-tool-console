@@ -20,9 +20,18 @@ export interface CatalogServer {
 }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const TOOL_DIR = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,79}$/;
+// 100 characters, so a long tool name fits both its `runs/<tool>/` folder and its `<tool>.json` file.
+const TOOL_DIR = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/;
 const JSON_FILE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}\.json$/;
 const MAX_FILE = 2 * 1024 * 1024;
+
+/**
+ * The names the catalog will read, exported so the `package` command writes only names it can read.
+ * One rule, in one place.
+ */
+export const isCatalogId = (n: unknown): n is string => typeof n === "string" && ID.test(n);
+export const isCatalogToolDir = (n: unknown): n is string =>
+  typeof n === "string" && TOOL_DIR.test(n);
 
 /** The real path of root/parts, only if it is a plain (non-link) entry that stays inside root. */
 async function inside(rootReal: string, ...parts: string[]): Promise<string | null> {

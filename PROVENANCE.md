@@ -17,6 +17,7 @@ Moved from [ImOnFHIR/member-match-decoy-lab](https://github.com/ImOnFHIR/member-
 | `test/views/*.json` | same paths | None (synthetic) |
 | `test/schemas/score-member-match.input.json` | new | Saved from that repo's `score_member_match` tool listing (synthetic case names) |
 | `src/index.ts`, `src/console/index.ts` | new | Package entry points |
+| `src/package.ts` | the builder script of the repo named above | Made generic (any configured server, presets from each tool's own `_meta`); refuses a dirty tree; output is deterministic; no commit in PROVENANCE |
 
 Every name in the test data is synthetic. It passed that repo's leak guard (`npm run leak:check`) before the move.
 

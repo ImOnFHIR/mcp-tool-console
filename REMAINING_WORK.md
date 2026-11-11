@@ -2,6 +2,24 @@
 
 Newest session first.
 
+## Package command
+Done:
+- `mcp-tool-console package [--server <id>] [--out <dir>] [--runs <dir>]`, exported as `mcp-tool-console/package` (README "Packages").
+- Presets are run only for tools that are `readOnlyHint: true` and declared free; every view passes `checkView`.
+- A dirty tree (tracked changes in the run folder or in any selected server's repository, or no git repository) is refused: exit 1, nothing written.
+- An existing output folder is replaced only if it is exactly an earlier package, hashes and digest verified; case-colliding, Windows-unsafe and overlong names fail the build; a recording for a tool two packaged servers share is refused as ambiguous.
+- The name rules come from the hosted catalog (`isCatalogId`, `isCatalogToolDir`, tool folders widened to 100 characters); a test packages with the real command and reads the result back through `readCatalog`.
+- Recorded runs are shape-checked; output is deterministic; `PROVENANCE.json` carries per-file hashes and `packageDigest` (no commit SHA).
+- `package/samples/` is committed, and a drift test regenerates it and compares every file and the file list.
+- The fake server's tools gained presets so the gate has something to refuse.
+
+Remaining:
+- A tool repo that built its own bundle by hand moving onto this command, with its own committed package, is a separate change in that repo.
+- Any site consumer pinning a `packageDigest`.
+- Signed or attested provenance.
+
+Tests: `npm test` 122/122 (101 on main, plus 21 in `test/package.test.ts`). Each control was removed to confirm its test goes red.
+
 ## Registry overlay schema
 Added `docs/registry-overlay.schema.json` (the rules on `_meta["com.imonfhir/registry"]` for a registry entry) with a pinned copy of the published server.json schema, one valid entry and nineteen negative fixtures under `test/fixtures/registry-overlay/`. `test/registry-overlay.test.ts` fails if the published copy changes, if a fixture is added or dropped without updating its list, or if any negative stops failing at its own rule.
 
@@ -22,7 +40,7 @@ Remaining:
 - The compose file, the tunnel and the probe on the host that will run the container.
 - The portal and the Access application (the maintainer's).
 - A catalog page in the console (the page does not call `/api/catalog` yet), and serving a package's views and `PROVENANCE.json`.
-- The `package` command that produces the package folder.
+- The hosted side of the `package` command is built (see "Package command"); a deployed folder of packages is the maintainer's.
 - Publishing an image.
 
 Tests: `npm test` 101/101 (47 before; 54 in `test/hosted.test.ts`). Each control was removed in turn and its test went red, except that the catalog's link check and its real-path check each cover the other (both removed together goes red).

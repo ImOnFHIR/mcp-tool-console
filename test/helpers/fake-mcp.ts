@@ -6,10 +6,18 @@ import { z } from "zod";
 const server = new McpServer({ name: "fake", version: "0" });
 const ro = { readOnlyHint: true };
 const free = { "com.imonfhir/cost": { free: true } };
+const preset = (id: string, args: Record<string, unknown>) => ({
+  "com.imonfhir/presets": [{ id, label: `Try ${id}`, args }],
+});
 
 server.registerTool(
   "echo",
-  { title: "Echo", inputSchema: { text: z.string().optional() }, annotations: ro, _meta: free },
+  {
+    title: "Echo",
+    inputSchema: { text: z.string().optional() },
+    annotations: ro,
+    _meta: { ...free, ...preset("hello", { text: "hello" }) },
+  },
   async ({ text }) => ({
     content: [{ type: "text", text: `echo: ${text ?? ""}` }],
     _meta: {
@@ -20,7 +28,12 @@ server.registerTool(
 
 server.registerTool(
   "write_thing",
-  { title: "Write a thing", inputSchema: {}, annotations: { readOnlyHint: false }, _meta: free },
+  {
+    title: "Write a thing",
+    inputSchema: {},
+    annotations: { readOnlyHint: false },
+    _meta: { ...free, ...preset("write", {}) },
+  },
   async () => ({ content: [{ type: "text", text: "wrote" }] }),
 );
 
@@ -30,7 +43,7 @@ server.registerTool(
     title: "Paid",
     inputSchema: {},
     annotations: ro,
-    _meta: { "com.imonfhir/cost": { free: false, note: "about $0.01" } },
+    _meta: { "com.imonfhir/cost": { free: false, note: "about $0.01" }, ...preset("spend", {}) },
   },
   async () => ({ content: [{ type: "text", text: "spent" }] }),
 );

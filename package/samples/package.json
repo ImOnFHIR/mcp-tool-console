@@ -1,0 +1,13 @@
+{
+  "id": "samples",
+  "name": "fake",
+  "tools": [
+    "die",
+    "echo",
+    "env_probe",
+    "hang",
+    "paid",
+    "write_thing"
+  ],
+  "version": "0"
+}

@@ -25,6 +25,7 @@ interface Live {
   error?: string;
   log: string[];
   tools: any[];
+  info?: { name: string; version: string };
 }
 
 const LOG_LINES = 200;
@@ -144,6 +145,8 @@ export class Hub {
       s.client = client;
       s.http = pendingHttp;
       s.tools = tools;
+      const v = client.getServerVersion();
+      s.info = v ? { name: v.name, version: v.version } : undefined;
       s.status = "ready";
     } catch (e) {
       s.status = "stopped";
@@ -196,6 +199,16 @@ export class Hub {
         ...s.config.args,
       ].join(" "),
     }));
+  }
+
+  /** The server's own name and version from its initialize reply (once it has started). */
+  info(id: string) {
+    return this.servers.get(id)?.info;
+  }
+
+  /** The server's error message when it did not start, else null. */
+  error(id: string) {
+    return this.servers.get(id)?.error ?? null;
   }
 
   tool(id: string, name: string) {
