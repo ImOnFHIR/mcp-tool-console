@@ -8,6 +8,12 @@ import type { AddressInfo } from "node:net";
 import { loadConsoleConfig, ConfigError } from "../src/console/config.js";
 import { Hub } from "../src/console/hub.js";
 import { createConsoleServer } from "../src/console/http.js";
+import {
+  AI_SDK_PACKAGES,
+  aiSdkFindings,
+  declaredDependencies,
+  isAiSdk,
+} from "./helpers/ai-sdk-ban.js";
 
 const TOKEN = "test-token";
 const dir = mkdtempSync(join(tmpdir(), "console-"));
@@ -238,15 +244,61 @@ test("console config: committed config may not use machine paths; ids must be un
   assert.throws(() => loadConsoleConfig(d), /used twice/);
 });
 
-test("console code never imports the AI SDK or spend code", () => {
+test("no AI SDK or spend code: package.json declares none, and no file under src/ or scripts/ imports one", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8")) as Record<string, unknown>;
+  assert.deepEqual(declaredDependencies(pkg).filter(isAiSdk), [], "package.json");
   const files = (d: string): string[] =>
     readdirSync(d, { withFileTypes: true }).flatMap((e) =>
-      e.isDirectory() ? files(join(d, e.name)) : e.name.endsWith(".ts") ? [join(d, e.name)] : [],
+      e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)],
     );
-  for (const f of [...files("src/console"), ...files("src/ui")]) {
-    const t = readFileSync(f, "utf8");
-    assert.doesNotMatch(t, /@anthropic-ai\/sdk|spend\.js|alert\.js|matchers\/llm/, f);
+  const scanned = [...files("src"), ...files("scripts")];
+  // The walk reaches past the two folders the old ban covered.
+  for (const f of ["src/package.ts", "src/tool-meta.ts", "src/console/http.ts", "src/ui/view.ts"]) {
+    assert.ok(scanned.includes(join(f)), `scan misses ${f}`);
   }
+  for (const f of scanned) assert.deepEqual(aiSdkFindings(readFileSync(f, "utf8")), [], f);
+});
+
+/** One module specifier written in each import form the ban must catch. */
+const importForms = (s: string): string[] => [
+  `import Client from "${s}";`,
+  `import type { Model } from '${s}';`,
+  `export * from "${s}";`,
+  `import "${s}";`,
+  `const m = await import("${s}");`,
+  `const m = require('${s}');`,
+  "const m = await import(`" + s + "`);",
+];
+
+test("the AI-SDK ban catches every listed vendor in every import form, and nothing else", () => {
+  const samples = [
+    ...AI_SDK_PACKAGES.map((p) => (p.endsWith("/") ? `${p}client` : p)),
+    "openai/resources",
+    "ai/rsc",
+  ];
+  for (const s of samples)
+    for (const f of importForms(s)) assert.deepEqual(aiSdkFindings(f), [s], f);
+  // package.json: a dependency in any map is caught.
+  assert.deepEqual(declaredDependencies({ dependencies: { openai: "6.0.0" } }).filter(isAiSdk), [
+    "openai",
+  ]);
+  assert.deepEqual(
+    declaredDependencies({ devDependencies: { "@ai-sdk/anthropic": "2.0.0" } }).filter(isAiSdk),
+    ["@ai-sdk/anthropic"],
+  );
+  assert.deepEqual(aiSdkFindings(`import { charge } from "./spend.js";`), ["spend.js"]);
+  // Negative twin: strings this repo may legitimately hold.
+  for (const ok of [
+    `const mode = "ai";`,
+    `import x from "aidbox";`,
+    `import x from "./openai-notes.js";`,
+    `import x from "langchainish";`,
+    `import { Client } from "@modelcontextprotocol/sdk/client/index.js";`,
+    `// OpenAI and Anthropic models are not used here`,
+  ]) {
+    assert.deepEqual(aiSdkFindings(ok), [], ok);
+  }
+  assert.deepEqual(declaredDependencies({ dependencies: { aidbox: "1.0.0" } }).filter(isAiSdk), []);
 });
 
 test("console cli: finds its page beside itself, not in the caller's folder", () => {
