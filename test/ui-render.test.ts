@@ -10,6 +10,11 @@ const views = readdirSync("test/views").map(
   (f) => [f, JSON.parse(readFileSync(`test/views/${f}`, "utf8")) as ToolView] as const,
 );
 
+test("conformance views: every file is a valid ToolView", () => {
+  assert.ok(views.length > 0, "test/views is empty");
+  for (const [f, v] of views) assert.deepEqual(checkView(v), [], f);
+});
+
 test("render: every conformance view shows all its required text", () => {
   for (const [f, v] of views) {
     const html = renderView(v);
