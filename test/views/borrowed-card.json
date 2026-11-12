@@ -5,12 +5,12 @@
   "banner": "Synthetic data only; not a production matching recommendation.",
   "stats": [
     {
-      "label": "Identity matcher, strict",
+      "label": "Scored identity matcher, strict",
       "value": "1 of 1 right",
       "status": "good"
     },
     {
-      "label": "Identity matcher, relaxed",
+      "label": "Scored identity matcher, relaxed",
       "value": "1 of 1 right",
       "status": "good"
     },
@@ -61,7 +61,7 @@
           "rows": [
             {
               "test": "John's demographics, Jon's card",
-              "matcher": "Identity matcher, strict",
+              "matcher": "Scored identity matcher, strict",
               "result": {
                 "text": "✓ Rightly refused: not this person",
                 "status": "good"
@@ -70,7 +70,7 @@
             },
             {
               "test": "John's demographics, Jon's card",
-              "matcher": "Identity matcher, relaxed",
+              "matcher": "Scored identity matcher, relaxed",
               "result": {
                 "text": "✓ Rightly refused: not this person",
                 "status": "good"
@@ -139,11 +139,11 @@
           "kind": "bullets",
           "items": [
             {
-              "text": "Identity matcher, strict: Nick's matcher (C-057); accepts look-alikes only at 90%+.",
-              "detail": "Nick's event-sourced identity matcher (C-057) at its own setting: accepts a look-alike only when it is at least 90% sure; otherwise sends it to human review."
+              "text": "Scored identity matcher, strict: Scores look-alikes on name and birth date; accepts only at 90%+.",
+              "detail": "Checks the member ID first, then scores how alike the name and birth date are. Accepts a look-alike only when at least 90% sure; otherwise sends it to human review."
             },
             {
-              "text": "Identity matcher, relaxed: Same matcher; accepts look-alikes at a level you set.",
+              "text": "Scored identity matcher, relaxed: Same matcher; accepts look-alikes at a level you set.",
               "detail": "The same matcher, but it accepts a look-alike at a confidence you set (default 85%)."
             },
             {

@@ -5,12 +5,12 @@
   "banner": "Synthetic data only; not a production matching recommendation.",
   "stats": [
     {
-      "label": "Identity matcher, strict",
+      "label": "Scored identity matcher, strict",
       "value": "0 of 1 right",
       "status": "warn"
     },
     {
-      "label": "Identity matcher, relaxed",
+      "label": "Scored identity matcher, relaxed",
       "value": "0 of 1 right",
       "status": "warn"
     },
@@ -27,12 +27,12 @@
   ],
   "bullets": [
     {
-      "text": "Identity matcher, strict: Refused (needs human review), but Rowan Quill Jr was the right answer.",
+      "text": "Scored identity matcher, strict: Refused (needs human review), but Rowan Quill Jr was the right answer.",
       "status": "warn",
       "detail": "Test: Senior and Junior on one card. Father and son, same name, same card. Only the birth date tells which Rowan is asking.\nRight answer: Return Rowan Quill Jr (SYN-MEM-2001-02)."
     },
     {
-      "text": "Identity matcher, relaxed: Refused (needs human review), but Rowan Quill Jr was the right answer.",
+      "text": "Scored identity matcher, relaxed: Refused (needs human review), but Rowan Quill Jr was the right answer.",
       "status": "warn",
       "detail": "Test: Senior and Junior on one card. Father and son, same name, same card. Only the birth date tells which Rowan is asking.\nRight answer: Return Rowan Quill Jr (SYN-MEM-2001-02)."
     }
@@ -66,7 +66,7 @@
           "rows": [
             {
               "test": "Senior and Junior on one card",
-              "matcher": "Identity matcher, strict",
+              "matcher": "Scored identity matcher, strict",
               "result": {
                 "text": "✗ Missed the right person",
                 "status": "warn"
@@ -75,7 +75,7 @@
             },
             {
               "test": "Senior and Junior on one card",
-              "matcher": "Identity matcher, relaxed",
+              "matcher": "Scored identity matcher, relaxed",
               "result": {
                 "text": "✗ Missed the right person",
                 "status": "warn"
@@ -144,11 +144,11 @@
           "kind": "bullets",
           "items": [
             {
-              "text": "Identity matcher, strict: Nick's matcher (C-057); accepts look-alikes only at 90%+.",
-              "detail": "Nick's event-sourced identity matcher (C-057) at its own setting: accepts a look-alike only when it is at least 90% sure; otherwise sends it to human review."
+              "text": "Scored identity matcher, strict: Scores look-alikes on name and birth date; accepts only at 90%+.",
+              "detail": "Checks the member ID first, then scores how alike the name and birth date are. Accepts a look-alike only when at least 90% sure; otherwise sends it to human review."
             },
             {
-              "text": "Identity matcher, relaxed: Same matcher; accepts look-alikes at a level you set.",
+              "text": "Scored identity matcher, relaxed: Same matcher; accepts look-alikes at a level you set.",
               "detail": "The same matcher, but it accepts a look-alike at a confidence you set (default 85%)."
             },
             {
