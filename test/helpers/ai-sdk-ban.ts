@@ -7,12 +7,16 @@
 // - installed packages in package-lock.json, which also names transitive and aliased packages;
 // - import specifiers in the code, parsed by esbuild, so comments and prose never count. A
 //   type-only import is erased before it can be seen here; it needs the package installed, which
-//   the two layers above catch. URL imports are refused: a browser can load an SDK that isn't
-//   installed;
+//   the two layers above catch. A specifier with a scheme other than node: (https:, data:, blob:,
+//   file:) is refused: it loads code no dependency check can see;
 // - fail closed: an import() or require() whose argument isn't one plain string literal
-//   (`import(url)`, `import("./x" + y)`) is refused, since no layer can see what it loads;
+//   (`import(url)`, `import("./x" + y)`) is refused, since no layer can see what it loads. It is
+//   checked on esbuild's output, which has no comments, so a comment can neither hide nor fake one;
 // - the scoped vendor names anywhere in the text, as the ban before this one did.
-import { build } from "esbuild";
+//
+// What it is for: noticing an SDK added the ordinary ways. It is not a sandbox against code that
+// sets out to hide one (eval, new Function, a Worker script, a string assembled at run time).
+import { build, transform } from "esbuild";
 
 /**
  * Model-vendor SDK packages. An entry ending in "/" is a scope; any other entry is an
@@ -46,8 +50,13 @@ export function isAiSdk(specifier: string): boolean {
   );
 }
 
-/** A specifier that loads code from the network, the one way to use an SDK that isn't installed. */
-export const isUrlImport = (specifier: string): boolean => /^(https?:)?\/\//i.test(specifier);
+/**
+ * A specifier with a URL scheme other than node: (https:, data:, blob:, file:), or protocol-relative.
+ * Such code is never installed, so no dependency check can see what it is.
+ */
+export const isUrlImport = (specifier: string): boolean =>
+  specifier.startsWith("//") ||
+  (/^[a-z][a-z0-9+.-]*:/i.test(specifier) && !specifier.startsWith("node:"));
 
 /** The loader esbuild needs for a source file, or undefined when the file isn't JS or TS. */
 export function loaderFor(file: string): "ts" | "js" | undefined {
@@ -87,14 +96,28 @@ export async function moduleSpecifiers(source: string, loader: "ts" | "js"): Pro
 }
 
 const CALL = /\b(?:import|require)\s*\(/g;
-/** What may follow `import(` or `require(`: comments, then one plain string literal, then `)` or `,`. */
-const LITERAL_ARG = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:"[^"\\\n]*"|'[^'\\\n]*'|`[^`\\$]*`)\s*[,)]/;
+/**
+ * What may follow `import(` or `require(` in esbuild's output: one plain string literal, then `)` or
+ * `,`. esbuild keeps bundler directive comments (webpackIgnore, @vite-ignore) there, so those may come
+ * first.
+ */
+const LITERAL_ARG = /^\s*(?:\/\*[^*]*\*\/\s*)*(?:"[^"\\\n]*"|'[^'\\\n]*'|`[^`\\$]*`)\s*[,)]/;
 
-/** Each import() or require() call whose argument isn't a plain string literal, by line. */
-export function computedImports(source: string): string[] {
-  return [...source.matchAll(CALL)]
-    .filter((m) => !LITERAL_ARG.test(source.slice(m.index + m[0].length)))
-    .map((m) => `computed import, line ${source.slice(0, m.index).split("\n").length}`);
+/** The code without comments or types, as esbuild prints it. */
+export async function codeOnly(source: string, loader: "ts" | "js"): Promise<string> {
+  const out = await transform(source, {
+    loader,
+    legalComments: "none",
+    tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } },
+  });
+  return out.code;
+}
+
+/** Each import() or require() call in comment-free code whose argument isn't a plain string literal. */
+export function computedImports(code: string): string[] {
+  return [...code.matchAll(CALL)]
+    .filter((m) => !LITERAL_ARG.test(code.slice(m.index + m[0].length)))
+    .map((m) => `computed import: ${code.slice(m.index).split("\n")[0].slice(0, 60)}`);
 }
 
 /** The scoped vendor names (every "@…" entry), matched anywhere in the text. */
@@ -103,8 +126,10 @@ const SCOPED = AI_SDK_PACKAGES.filter((p) => p.startsWith("@"));
 /** Every banned, URL or computed import, scoped vendor name and spend-code reference in a source. */
 export async function aiSdkFindings(source: string, loader: "ts" | "js" = "ts"): Promise<string[]> {
   let specs: string[] = [];
+  let code = "";
   let unreadable: string[] = [];
   try {
+    code = await codeOnly(source, loader);
     specs = await moduleSpecifiers(source, loader);
   } catch (e) {
     // A file the parser can't read is a finding, not a crash: the ban must go red, not throw.
@@ -114,7 +139,7 @@ export async function aiSdkFindings(source: string, loader: "ts" | "js" = "ts"):
   return [
     ...unreadable,
     ...specs.filter((s) => isAiSdk(s) || isUrlImport(s)),
-    ...computedImports(source),
+    ...computedImports(code),
     ...SCOPED.filter((p) => source.includes(p)),
     ...(spend ? [spend[0]] : []),
   ];

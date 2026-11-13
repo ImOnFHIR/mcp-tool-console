@@ -296,18 +296,28 @@ test("the AI-SDK ban catches every listed vendor in every import form, and nothi
   ];
   for (const s of samples)
     for (const f of importForms(s)) assert.ok((await aiSdkFindings(f)).includes(s), f);
-  // A browser can load an SDK that isn't installed, from a URL.
-  assert.deepEqual(await aiSdkFindings(`await import("https://esm.sh/openai");`), [
+  // Code no dependency check can see: a URL, a data: module, a file outside the tree.
+  for (const u of [
     "https://esm.sh/openai",
-  ]);
+    "//esm.sh/openai",
+    "data:text/javascript;base64,ZXhwb3J0IHt9",
+    "blob:https://example.com/0",
+    "file:///tmp/x.js",
+  ]) {
+    assert.deepEqual(await aiSdkFindings(`await import("${u}");`), [u], u);
+  }
   // Fail closed: nothing can see what a computed import loads.
   for (const f of [
     `const u = "https://esm.sh/openai"; await import(u);`,
     `const r = require(name);`,
     `await import("./x" + y);`,
     "await import(`./x/${y}`);",
+    `await import /* note */ (url);`,
   ]) {
-    assert.ok((await aiSdkFindings(f)).includes("computed import, line 1"), f);
+    assert.ok(
+      (await aiSdkFindings(f)).some((x) => x.startsWith("computed import: ")),
+      f,
+    );
   }
   // A scoped vendor name anywhere in the text, as the ban before this one caught it.
   assert.deepEqual(await aiSdkFindings(`const name = "@anthropic-ai/sdk";`), ["@anthropic-ai/"]);
@@ -336,6 +346,8 @@ test("the AI-SDK ban catches every listed vendor in every import form, and nothi
     `const { run } = await import("../package.js");`,
     `const m = await import(/* webpackIgnore: true */ "./x.js", { with: { type: "json" } });`,
     `const fs = require("node:fs");`,
+    `// import(name) is how a computed import looks`,
+    `/* require(x) */ const y = 1;`,
     `const here = new URL(".", import.meta.url);`,
   ]) {
     assert.deepEqual(await aiSdkFindings(ok), [], ok);
