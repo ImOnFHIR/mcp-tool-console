@@ -4,10 +4,12 @@
  * Pure: no DOM, testable in Node.
  */
 import {
+  AI_LABEL,
   STATUSES,
   type Block,
   type Bullet,
   type Cell,
+  type Provenance,
   type Status,
   type ToolView,
 } from "./view.js";
@@ -39,6 +41,12 @@ const pill = (raw?: Status) => {
     : "";
 };
 
+/** A bullet's cited passage ids, after its text. Contract 1.1. */
+const refsHtml = (refs: unknown) =>
+  Array.isArray(refs) && refs.length
+    ? ` <span class="tv-refs">${refs.map((r) => `[${esc(r)}]`).join(" ")}</span>`
+    : "";
+
 function bullets(items: Bullet[]): string {
   return `<ul class="tv-bullets">${items
     .map((b) => {
@@ -46,11 +54,34 @@ function bullets(items: Bullet[]): string {
       const mark = st
         ? `<span class="tv-mark tv-${st}" aria-label="${esc(STATUS_WORD[st])}">${MARK[st]}</span>`
         : `<span class="tv-mark" aria-hidden="true">•</span>`;
+      const line = `${esc(b.text)}${refsHtml(b.refs)}`;
       return b.detail
-        ? `<li>${mark}<details class="tv-more"><summary>${esc(b.text)}</summary><p class="tv-detail">${esc(b.detail).replace(/\n/g, "<br>")}</p></details></li>`
-        : `<li>${mark}<span>${esc(b.text)}</span></li>`;
+        ? `<li>${mark}<details class="tv-more"><summary>${line}</summary><p class="tv-detail">${esc(b.detail).replace(/\n/g, "<br>")}</p></details></li>`
+        : `<li>${mark}<span>${line}</span></li>`;
     })
     .join("")}</ul>`;
+}
+
+const EGRESS_WORDS: Record<string, string> = {
+  none: "your input went to no one outside the tool",
+  "model-provider": "your input was sent to a model provider",
+};
+
+/**
+ * Provenance in plain words, one line: who wrote it, from what evidence, where the input went.
+ * Contract 1.1. Digests and passage ids stay in the data; the line is for people.
+ */
+export function provenanceLine(p: Provenance): string {
+  const who =
+    p.mode === "deterministic"
+      ? "Worked out by the tool; no model wrote it"
+      : `${AI_LABEL} by ${p.model ?? "an unnamed model"}${p.at ? ` on ${p.at}` : ""}`;
+  const parts = [who];
+  if (p.mode !== "deterministic" && p.promptVersion) parts.push(`prompt ${p.promptVersion}`);
+  parts.push(`evidence: ${p.evidenceType}`);
+  parts.push(EGRESS_WORDS[p.egress] ?? `input sent to: ${p.egress}`);
+  if (typeof p.costUsd === "number") parts.push(`cost US$${p.costUsd.toFixed(4)}`);
+  return parts.join(" · ");
 }
 
 const cellText = (c: Cell) => (typeof c === "string" ? c : c.text);
@@ -121,6 +152,7 @@ export function renderView(v: ToolView, o: RenderOptions = {}): string {
     parts.push(
       `<div class="tv-next">${v.next.map((n) => `<button type="button" class="tv-next-btn" data-patch="${esc(JSON.stringify(n.patch))}">${esc(n.label)}</button>`).join("")}</div>`,
     );
+  if (v.provenance) parts.push(`<p class="tv-provenance">${esc(provenanceLine(v.provenance))}</p>`);
   if (v.footnote) parts.push(`<p class="tv-footnote">${esc(v.footnote)}</p>`);
   parts.push(`</div>`);
   return parts.join("\n");
@@ -135,9 +167,14 @@ export function requiredText(v: ToolView): string[] {
     ...(v.sections ?? []).map((s) => s.title),
   ];
   if (v.banner) out.push(v.banner);
+  for (const b of v.bullets ?? []) out.push(...(b.refs ?? []));
   for (const s of v.sections ?? [])
-    for (const b of s.blocks)
+    for (const b of s.blocks) {
       if (b.kind === "table")
         for (const r of b.rows) for (const c of Object.values(r)) out.push(cellText(c));
+      // Contract 1.1: bullets inside sections carry the cited passages ("sources") and their refs.
+      if (b.kind === "bullets") for (const i of b.items) out.push(i.text, ...(i.refs ?? []));
+    }
+  if (v.provenance) out.push(provenanceLine(v.provenance));
   return out.filter(Boolean);
 }

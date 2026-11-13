@@ -55,8 +55,8 @@ This repo is how ImOnFHIR's tools live up to that:
 
 | Import | What it is | Runs in |
 |---|---|---|
-| `mcp-tool-console` | The tool contract (`toolMeta`, `resultMeta`, `describe`) and ToolView (`checkView`, types, limits) | Anywhere: no Node APIs, no network, no dependencies |
-| `mcp-tool-console/render` | `renderView(view)`: a ToolView as escaped HTML; `esc()` | Anywhere |
+| `mcp-tool-console` | The tool contract (`toolMeta`, `resultMeta`, `describe`) and ToolView (`checkView`, `aiOrDeterministic`, `AI_LABEL`, types, limits) | Anywhere: no Node APIs, no network, no dependencies |
+| `mcp-tool-console/render` | `renderView(view)`: a ToolView as escaped HTML; `esc()`; `provenanceLine()`; `requiredText()`, every string a renderer must show | Anywhere |
 | `mcp-tool-console/form` | `renderForm(schema)`, `formToArgs`, `argsSummary`: a JSON Schema as a plain form | Anywhere |
 | `mcp-tool-console/styles` | `TOKENS`, `VIEW_CSS`: the shared look, light and dark | Anywhere |
 | `mcp-tool-console/console` | `Hub`, `createConsoleServer`, `loadConsoleConfig`: the console's Node side | Node |
@@ -152,17 +152,40 @@ The form turns these into the right control:
 | `v` | Always `1` |
 | `status` | `good`, `bad`, `warn`, `info` or `error` |
 | `headline` | One sentence, one line |
-| `banner` | Optional notice, such as "Synthetic data only" |
+| `banner` | Optional notice, such as "Synthetic data only". Required on a machine-written view (below) |
 | `stats[]` | Tiles: `{ label, value, status? }` |
-| `bullets[]` | `{ text ≤ 110 chars, status?, detail? }`; the detail opens on click |
+| `bullets[]` | `{ text ≤ 110 chars, status?, detail?, refs? }`; the detail opens on click; `refs` are cited passage ids |
 | `sections[]` | Collapsed unless `open`; blocks: `bullets`, `table`, `kv`, `text`, `code` |
 | `next[]` | Follow-up runs: `{ label, patch }`, the same tool with these arguments changed |
 | `footnote` | Small print, such as a data fingerprint |
+| `provenance` | Optional: who wrote the words, from what, and where the input went (below) |
 
 **Limits:**
 - the view stays under 50 KB
 - a table shows at most 200 rows; add a note if you cut it
 - unknown block kinds still render, as code, so newer views don't break older renderers
+
+### Who wrote a result, and what it cites (contract 1.1)
+Still `v: 1`: these fields are optional, and a renderer written before them still shows the two facts that matter, because neither depends on a new field.
+
+- **The label rides in `banner`.** When `provenance.mode` is anything other than `"deterministic"`, the banner must start with `Machine-written` and name the model and the date, for example `Machine-written · unreviewed · example-model-1 · 2026-11-12.` A new mode a checker doesn't know counts as machine-written, so it can't skip the label.
+- **Cited passages are bullets in a section with id `sources`.** Every id in `provenance.passageIds` must be a `refs` entry on a bullet there, and every `refs` entry anywhere must be in `passageIds`.
+- **`provenance`** is for newer renderers and for machines:
+
+| Field | What it is |
+|---|---|
+| `mode` | `"deterministic"` (the tool computed every word) or `"model"` (a language model wrote some) |
+| `egress` | Who outside the tool received this run's input: `"none"` or `"model-provider"`. It describes the run, not who wrote the words: a deterministic result returned after a model was tried still says `"model-provider"` |
+| `baseDigest` | `sha256:` of the deterministic result this view reports or explains |
+| `corpusDigest` | `sha256:` of the committed corpus or pack the passages come from, or `"none"` |
+| `passageIds[]` | Every passage the view cites |
+| `evidenceType` | What backs the words, such as `validator-output` or `spec-text` |
+| `model`, `at` | The model and the date (ISO). Required on a machine-written view |
+| `promptVersion`, `costUsd` | Optional |
+
+`checkView` enforces all of this. `docs/tool-view.schema.json` carries what a JSON Schema can express; the cross-field rules (model and date in the banner, sources, refs that resolve) are `checkView`'s alone. The renderer shows the provenance in one line of plain words and the refs after each bullet's text.
+
+**Abstain means the deterministic result alone.** `aiOrDeterministic(candidate, base, runEgress)` returns a machine-written view only when it passes `checkView`, explains the same result (`baseDigest`), keeps its status, headline and stats, and gives `runEgress` (where this run's input actually went) as its `egress`. Otherwise it returns `base`, never repairing a field or filling in a default. If a model provider received the input, the returned base's `egress` says so: abstaining can't take the input back. The base is checked as it would come back, so leave it room under the size limit for that change.
 
 **Why `_meta` and not `structuredContent`:** a tool's `structuredContent` is its data. Clients, agents and tests may compare it exactly. Keeping the view beside it means adding a view never changes a tool's data.
 

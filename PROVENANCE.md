@@ -28,3 +28,11 @@ Every name in the test data is synthetic. It passed that repo's leak guard (`npm
 | `test/fixtures/registry-overlay/server.schema.2025-12-11.json` | The MCP Registry's published server.json schema, <https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json> | Byte-identical copy, unmodified. sha256 `3fba09590c99f61735d234822279f4223fab9e300c0a81e81c91ab62a4114de0`, pinned in `test/registry-overlay.test.ts`. |
 | `docs/registry-overlay.schema.json`, `test/fixtures/registry-overlay/negative/*.json`, `valid.json` | Written by this repo's author | Synthetic (`example.com` names). |
 
+## Contract 1.1 fixtures
+
+| Here | From | Notes |
+|---|---|---|
+| `test/views/machine-written.json`, `test/views/deterministic-provenance.json` | Written by this repo's author | Synthetic. Not synced from member-match-decoy-lab like the other views: they are the contract's own conformance views. "Synthetic Guide 1.0.0" and `example-model-1` are made up. The digests are sha256 of the strings `contract 1.1 conformance: the synthetic base result` and `contract 1.1 conformance: Synthetic Guide 1.0.0`. |
+| `test/fixtures/tool-view/negative/*.json` | Written by this repo's author | Each breaks one contract 1.1 rule; listed in `test/tool-view-1.1.test.ts`. |
+| `test/helpers/render-1.0.ts` | `src/ui/render.ts` at commit `7f3859c86fec2a55e2776a38727598b682f0dc4f`, the last renderer before contract 1.1 | Frozen copy. Only its import path changed. It stands in for every renderer already deployed, so the test can show they still display the label and the sources. Never update it. |
+

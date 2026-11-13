@@ -1,0 +1,71 @@
+{
+  "v": 1,
+  "status": "bad",
+  "headline": "1 rule failed: the synthetic claim names no requesting provider.",
+  "banner": "Machine-written · unreviewed · example-model-1 · 2026-02-30. The tool's own result is the source of truth.",
+  "stats": [
+    {
+      "label": "Rules failed",
+      "value": "1",
+      "status": "bad"
+    }
+  ],
+  "bullets": [
+    {
+      "text": "The claim needs a requesting provider, and this one names none.",
+      "status": "bad",
+      "refs": [
+        "syn-guide@1.0.0#req-1"
+      ]
+    },
+    {
+      "text": "Add the provider as a Practitioner entry and point the claim at it.",
+      "refs": [
+        "syn-guide@1.0.0#req-1",
+        "syn-guide@1.0.0#req-2"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "sources",
+      "title": "Sources",
+      "hint": "2 passages",
+      "blocks": [
+        {
+          "kind": "bullets",
+          "items": [
+            {
+              "text": "Synthetic Guide 1.0.0, requirement 1: a claim names its requesting provider.",
+              "refs": [
+                "syn-guide@1.0.0#req-1"
+              ]
+            },
+            {
+              "text": "Synthetic Guide 1.0.0, requirement 2: every provider a claim names is in the bundle.",
+              "refs": [
+                "syn-guide@1.0.0#req-2"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "footnote": "Synthetic data only.",
+  "provenance": {
+    "mode": "model",
+    "egress": "none",
+    "baseDigest": "sha256:724ed501168dca3f1e09a9ff3e44b72b6ad1705045f6b17efa242f5aa326d005",
+    "corpusDigest": "sha256:c93473aed1d8264b962cda435c060c751f551a801e066c9b29d5668ed2a1261f",
+    "passageIds": [
+      "syn-guide@1.0.0#req-1",
+      "syn-guide@1.0.0#req-2"
+    ],
+    "evidenceType": "spec-text",
+    "model": "example-model-1",
+    "promptVersion": "explain-v1",
+    "costUsd": 0.0021,
+    "at": "2026-02-30"
+  }
+}
