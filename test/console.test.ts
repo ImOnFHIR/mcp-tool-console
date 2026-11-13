@@ -12,7 +12,9 @@ import {
   AI_SDK_PACKAGES,
   aiSdkFindings,
   declaredDependencies,
+  installedPackages,
   isAiSdk,
+  loaderFor,
 } from "./helpers/ai-sdk-ban.js";
 
 const TOKEN = "test-token";
@@ -244,9 +246,13 @@ test("console config: committed config may not use machine paths; ids must be un
   assert.throws(() => loadConsoleConfig(d), /used twice/);
 });
 
-test("no AI SDK or spend code: package.json declares none, and no file under src/ or scripts/ imports one", () => {
+test("no AI SDK or spend code: none declared, none installed, and no file under src/ or scripts/ imports one", async () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8")) as Record<string, unknown>;
   assert.deepEqual(declaredDependencies(pkg).filter(isAiSdk), [], "package.json");
+  const lock = JSON.parse(readFileSync("package-lock.json", "utf8")) as Record<string, unknown>;
+  const installed = installedPackages(lock);
+  assert.ok(installed.includes("@modelcontextprotocol/sdk"), "package-lock.json was not read");
+  assert.deepEqual(installed.filter(isAiSdk), [], "package-lock.json");
   const files = (d: string): string[] =>
     readdirSync(d, { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)],
@@ -256,49 +262,71 @@ test("no AI SDK or spend code: package.json declares none, and no file under src
   for (const f of ["src/package.ts", "src/tool-meta.ts", "src/console/http.ts", "src/ui/view.ts"]) {
     assert.ok(scanned.includes(join(f)), `scan misses ${f}`);
   }
-  for (const f of scanned) assert.deepEqual(aiSdkFindings(readFileSync(f, "utf8")), [], f);
+  for (const f of scanned) {
+    const loader = loaderFor(f);
+    assert.ok(loader, `${f}: not a JS or TS file, so the ban can't read it; extend the test`);
+    assert.deepEqual(await aiSdkFindings(readFileSync(f, "utf8"), loader), [], f);
+  }
 });
 
-/** One module specifier written in each import form the ban must catch. */
+/** The banned packages a package.json declares. */
+const declared = (pkg: Record<string, unknown>) => declaredDependencies(pkg).filter(isAiSdk);
+/** The banned packages a lockfile with these `packages` entries installs. */
+const lock = (packages: Record<string, unknown>) => installedPackages({ packages }).filter(isAiSdk);
+
+/** One module specifier written in each import form the source scan must catch. */
 const importForms = (s: string): string[] => [
   `import Client from "${s}";`,
-  `import type { Model } from '${s}';`,
+  `import { Model } from '${s}';`,
+  `import Client from /* note */ "${s}";`,
   `export * from "${s}";`,
   `import "${s}";`,
   `const m = await import("${s}");`,
+  `const m = await import(/* webpackIgnore: true */ "${s}");`,
   `const m = require('${s}');`,
   "const m = await import(`" + s + "`);",
+  `import M = require("${s}");`,
 ];
 
-test("the AI-SDK ban catches every listed vendor in every import form, and nothing else", () => {
+test("the AI-SDK ban catches every listed vendor in every import form, and nothing else", async () => {
   const samples = [
     ...AI_SDK_PACKAGES.map((p) => (p.endsWith("/") ? `${p}client` : p)),
     "openai/resources",
     "ai/rsc",
   ];
   for (const s of samples)
-    for (const f of importForms(s)) assert.deepEqual(aiSdkFindings(f), [s], f);
-  // package.json: a dependency in any map is caught.
-  assert.deepEqual(declaredDependencies({ dependencies: { openai: "6.0.0" } }).filter(isAiSdk), [
-    "openai",
+    for (const f of importForms(s)) assert.deepEqual(await aiSdkFindings(f), [s], f);
+  // A browser can load an SDK that isn't installed, from a URL.
+  assert.deepEqual(await aiSdkFindings(`await import("https://esm.sh/openai");`), [
+    "https://esm.sh/openai",
   ]);
-  assert.deepEqual(
-    declaredDependencies({ devDependencies: { "@ai-sdk/anthropic": "2.0.0" } }).filter(isAiSdk),
-    ["@ai-sdk/anthropic"],
-  );
-  assert.deepEqual(aiSdkFindings(`import { charge } from "./spend.js";`), ["spend.js"]);
-  // Negative twin: strings this repo may legitimately hold.
+  assert.deepEqual(await aiSdkFindings(`import { charge } from "./spend.js";`), ["spend.js"]);
+  // Declared: any of the four maps, and the target of an npm alias.
+  assert.deepEqual(declared({ dependencies: { openai: "6.0.0" } }), ["openai"]);
+  assert.deepEqual(declared({ devDependencies: { "@ai-sdk/anthropic": "2.0.0" } }), [
+    "@ai-sdk/anthropic",
+  ]);
+  assert.deepEqual(declared({ dependencies: { "model-client": "npm:openai@6.0.0" } }), ["openai"]);
+  assert.deepEqual(declared({ peerDependencies: { m: "npm:@anthropic-ai/sdk@1.2.3" } }), [
+    "@anthropic-ai/sdk",
+  ]);
+  // Installed: transitive packages and aliases, by real name.
+  assert.deepEqual(lock({ "node_modules/model-client": { name: "openai" } }), ["openai"]);
+  assert.deepEqual(lock({ "node_modules/x/node_modules/@ai-sdk/google": {} }), ["@ai-sdk/google"]);
+  // Negative twin: what this repo may legitimately hold.
   for (const ok of [
     `const mode = "ai";`,
+    `const help = 'Choose from "ai" or "manual"';`,
+    `// import OpenAI from "openai";`,
     `import x from "aidbox";`,
     `import x from "./openai-notes.js";`,
     `import x from "langchainish";`,
     `import { Client } from "@modelcontextprotocol/sdk/client/index.js";`,
-    `// OpenAI and Anthropic models are not used here`,
   ]) {
-    assert.deepEqual(aiSdkFindings(ok), [], ok);
+    assert.deepEqual(await aiSdkFindings(ok), [], ok);
   }
-  assert.deepEqual(declaredDependencies({ dependencies: { aidbox: "1.0.0" } }).filter(isAiSdk), []);
+  assert.deepEqual(declared({ dependencies: { aidbox: "1.0.0", y: "npm:aidbox@1" } }), []);
+  assert.deepEqual(lock({ "": { name: "openai-notes" }, "node_modules/aidbox": {} }), []);
 });
 
 test("console cli: finds its page beside itself, not in the caller's folder", () => {
