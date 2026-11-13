@@ -295,11 +295,22 @@ test("the AI-SDK ban catches every listed vendor in every import form, and nothi
     "ai/rsc",
   ];
   for (const s of samples)
-    for (const f of importForms(s)) assert.deepEqual(await aiSdkFindings(f), [s], f);
+    for (const f of importForms(s)) assert.ok((await aiSdkFindings(f)).includes(s), f);
   // A browser can load an SDK that isn't installed, from a URL.
   assert.deepEqual(await aiSdkFindings(`await import("https://esm.sh/openai");`), [
     "https://esm.sh/openai",
   ]);
+  // Fail closed: nothing can see what a computed import loads.
+  for (const f of [
+    `const u = "https://esm.sh/openai"; await import(u);`,
+    `const r = require(name);`,
+    `await import("./x" + y);`,
+    "await import(`./x/${y}`);",
+  ]) {
+    assert.ok((await aiSdkFindings(f)).includes("computed import, line 1"), f);
+  }
+  // A scoped vendor name anywhere in the text, as the ban before this one caught it.
+  assert.deepEqual(await aiSdkFindings(`const name = "@anthropic-ai/sdk";`), ["@anthropic-ai/"]);
   assert.deepEqual(await aiSdkFindings(`import { charge } from "./spend.js";`), ["spend.js"]);
   // Declared: any of the four maps, and the target of an npm alias.
   assert.deepEqual(declared({ dependencies: { openai: "6.0.0" } }), ["openai"]);
@@ -322,6 +333,10 @@ test("the AI-SDK ban catches every listed vendor in every import form, and nothi
     `import x from "./openai-notes.js";`,
     `import x from "langchainish";`,
     `import { Client } from "@modelcontextprotocol/sdk/client/index.js";`,
+    `const { run } = await import("../package.js");`,
+    `const m = await import(/* webpackIgnore: true */ "./x.js", { with: { type: "json" } });`,
+    `const fs = require("node:fs");`,
+    `const here = new URL(".", import.meta.url);`,
   ]) {
     assert.deepEqual(await aiSdkFindings(ok), [], ok);
   }

@@ -2,13 +2,16 @@
 // test/console.test.ts runs it over package.json, package-lock.json and the repo's code, and
 // proves it against a positive twin (every listed vendor, every import form) and a negative twin.
 //
-// Three layers, because each misses something the others catch:
+// Layers, because each misses something the others catch:
 // - declared dependencies, including npm alias targets ("model-client": "npm:openai@6");
 // - installed packages in package-lock.json, which also names transitive and aliased packages;
 // - import specifiers in the code, parsed by esbuild, so comments and prose never count. A
 //   type-only import is erased before it can be seen here; it needs the package installed, which
-//   the two layers above catch. A specifier built at run time (`import(name)`) can't be seen
-//   either; it also needs the package installed, except from a URL, so URL imports are refused.
+//   the two layers above catch. URL imports are refused: a browser can load an SDK that isn't
+//   installed;
+// - fail closed: an import() or require() whose argument isn't one plain string literal
+//   (`import(url)`, `import("./x" + y)`) is refused, since no layer can see what it loads;
+// - the scoped vendor names anywhere in the text, as the ban before this one did.
 import { build } from "esbuild";
 
 /**
@@ -83,11 +86,38 @@ export async function moduleSpecifiers(source: string, loader: "ts" | "js"): Pro
   return found;
 }
 
-/** Every banned or URL import, and any spend-code reference, in one source text. */
+const CALL = /\b(?:import|require)\s*\(/g;
+/** What may follow `import(` or `require(`: comments, then one plain string literal, then `)` or `,`. */
+const LITERAL_ARG = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:"[^"\\\n]*"|'[^'\\\n]*'|`[^`\\$]*`)\s*[,)]/;
+
+/** Each import() or require() call whose argument isn't a plain string literal, by line. */
+export function computedImports(source: string): string[] {
+  return [...source.matchAll(CALL)]
+    .filter((m) => !LITERAL_ARG.test(source.slice(m.index + m[0].length)))
+    .map((m) => `computed import, line ${source.slice(0, m.index).split("\n").length}`);
+}
+
+/** The scoped vendor names (every "@…" entry), matched anywhere in the text. */
+const SCOPED = AI_SDK_PACKAGES.filter((p) => p.startsWith("@"));
+
+/** Every banned, URL or computed import, scoped vendor name and spend-code reference in a source. */
 export async function aiSdkFindings(source: string, loader: "ts" | "js" = "ts"): Promise<string[]> {
-  const specs = await moduleSpecifiers(source, loader);
+  let specs: string[] = [];
+  let unreadable: string[] = [];
+  try {
+    specs = await moduleSpecifiers(source, loader);
+  } catch (e) {
+    // A file the parser can't read is a finding, not a crash: the ban must go red, not throw.
+    unreadable = [`unreadable: ${String((e as Error).message).split("\n")[0]}`];
+  }
   const spend = source.match(SPEND_CODE);
-  return [...specs.filter((s) => isAiSdk(s) || isUrlImport(s)), ...(spend ? [spend[0]] : [])];
+  return [
+    ...unreadable,
+    ...specs.filter((s) => isAiSdk(s) || isUrlImport(s)),
+    ...computedImports(source),
+    ...SCOPED.filter((p) => source.includes(p)),
+    ...(spend ? [spend[0]] : []),
+  ];
 }
 
 /** The real package behind an npm alias ("npm:openai@6.0.0" → "openai"), or undefined. */
