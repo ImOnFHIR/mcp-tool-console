@@ -20,7 +20,33 @@ export const AI_LABEL = "Machine-written";
 export const SOURCES_SECTION_ID = "sources";
 export const EGRESS = ["none", "model-provider"] as const;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/;
+
+/** An ISO date or date-time whose date is a real calendar day (Date.parse rolls 02-30 into March). */
+function isIsoDate(s: unknown): boolean {
+  const m = typeof s === "string" ? ISO_DATE.exec(s) : null;
+  if (!m || Number.isNaN(Date.parse(s as string))) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === mo - 1 && day.getUTCDate() === d;
+}
+
+/** The same data, whatever order object keys are in (arrays keep their order). */
+function sameData(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b))
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((x, i) => sameData(x, b[i]))
+    );
+  if (isObj(a) && isObj(b)) {
+    const ka = Object.keys(a).toSorted();
+    const kb = Object.keys(b).toSorted();
+    return ka.join("\0") === kb.join("\0") && ka.every((k) => sameData(a[k], b[k]));
+  }
+  return a === b;
+}
 
 /** Who wrote a view's words, from what, and where its input went. Contract 1.1. */
 export interface Provenance {
@@ -219,10 +245,7 @@ function checkProvenance(
     !(typeof pv.costUsd === "number" && Number.isFinite(pv.costUsd) && pv.costUsd >= 0)
   )
     p.push("provenance.costUsd must be a number, 0 or more");
-  if (
-    pv.at !== undefined &&
-    !(typeof pv.at === "string" && ISO_DATE.test(pv.at) && !Number.isNaN(Date.parse(pv.at)))
-  )
+  if (pv.at !== undefined && !isIsoDate(pv.at))
     p.push("provenance.at must be an ISO date or date-time");
 
   if (pv.mode !== "deterministic") {
@@ -285,7 +308,7 @@ export function aiOrDeterministic(candidate: unknown, base: ToolView): Chosen {
         problems.push("the candidate explains a different result (baseDigest differs)");
       if (c.status !== base.status) problems.push("the candidate changes the status");
       if (c.headline !== base.headline) problems.push("the candidate changes the headline");
-      if (JSON.stringify(c.stats ?? []) !== JSON.stringify(base.stats ?? []))
+      if (!sameData(c.stats ?? [], base.stats ?? []))
         problems.push("the candidate changes the stats");
     }
   }

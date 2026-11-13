@@ -51,6 +51,7 @@ const NEGATIVE: Record<string, { schemaPath: string | null; problem: RegExp }> =
     problem: /deterministic view can't have sent its input to a model provider/,
   },
   "bad-base-digest": { schemaPath: "/provenance/baseDigest", problem: /baseDigest must be/ },
+  "ai-impossible-date": { schemaPath: null, problem: /provenance\.at must be an ISO date/ },
   "passage-not-in-sources": {
     schemaPath: null,
     problem: /no bullet in the "sources" section that cites it/,
@@ -177,6 +178,10 @@ test("abstain: a model-written view that fails any check gives back the determin
   const ok = aiOrDeterministic(machine(), base);
   assert.equal(ok.abstained, false);
   assert.deepEqual(ok.view, machine());
+  // Key order is not a change: the package writer sorts keys.
+  const reordered = machine();
+  reordered.stats = reordered.stats!.map(({ label, value, status }) => ({ status, value, label }));
+  assert.equal(aiOrDeterministic(reordered, base).abstained, false, "reordered stat keys");
   const cases: [string, (v: ToolView) => unknown, RegExp][] = [
     ["no label", (v) => ({ ...v, banner: undefined }), /banner must start/],
     ["not an object", () => "explanation", /not an object/],
