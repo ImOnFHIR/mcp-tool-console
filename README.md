@@ -186,7 +186,7 @@ The form turns these into the right control:
 - A tool that isn't declared free needs a visible per-run confirmation.
 - Started servers get the MCP SDK's default environment plus only the variable names your local config lists, so API keys don't leak by accident.
 - Request bodies are capped, and the page is one self-contained file served under a strict Content Security Policy.
-- The console code never imports an AI SDK or spending code.
+- Nothing in the repo depends on, installs or imports an AI SDK or spending code. The test reads `package.json` (npm aliases included), every package `package-lock.json` installs, and the imports in every file under `src/` and `scripts/`. It refuses imports from a URL (any scheme but `node:`, `data:` included) and any `import()` or `require()` whose argument isn't a plain string, since nothing can see what those load. It notices an SDK added the ordinary ways; it isn't a sandbox against code written to hide one. It matches by package name: Anthropic, OpenAI, Google, the Vercel AI SDK, Mistral and the others listed in `test/helpers/ai-sdk-ban.ts`. It's a denylist, so a vendor not on it would pass.
 
 ## Packages
 
