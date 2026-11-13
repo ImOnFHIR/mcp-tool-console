@@ -12,7 +12,10 @@
 // - fail closed: an import() or require() whose argument isn't one plain string literal
 //   (`import(url)`, `import("./x" + y)`) is refused, since no layer can see what it loads. It is
 //   checked on esbuild's output, which has no comments, so a comment can neither hide nor fake one;
-// - the scoped vendor names anywhere in the text, as the ban before this one did.
+// - the scoped vendor names anywhere in the text, as the ban before this one did;
+// - any string literal in the comment-free code that is exactly a listed package name, which
+//   catches `createRequire(import.meta.url)("openai")` (a local require esbuild can't see as an
+//   import). The bare name "ai" is left to the import layers: as a plain string it is too common.
 //
 // What it is for: noticing an SDK added the ordinary ways. It is not a sandbox against code that
 // sets out to hide one (eval, new Function, a Worker script, a string assembled at run time).
@@ -120,6 +123,14 @@ export function computedImports(code: string): string[] {
     .map((m) => `computed import: ${code.slice(m.index).split("\n")[0].slice(0, 60)}`);
 }
 
+/** String literals in printed code that are shaped like a package name or a subpath of one. */
+const PACKAGE_LITERAL =
+  /(["'`])((?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(?:\/[a-z0-9-._~/]*)?)\1/g;
+
+/** Listed package names written as string literals anywhere in comment-free code, except bare "ai". */
+export const packageLiterals = (code: string): string[] =>
+  [...code.matchAll(PACKAGE_LITERAL)].map((m) => m[2]).filter((s) => s !== "ai" && isAiSdk(s));
+
 /** The scoped vendor names (every "@…" entry), matched anywhere in the text. */
 const SCOPED = AI_SDK_PACKAGES.filter((p) => p.startsWith("@"));
 
@@ -140,6 +151,7 @@ export async function aiSdkFindings(source: string, loader: "ts" | "js" = "ts"):
     ...unreadable,
     ...specs.filter((s) => isAiSdk(s) || isUrlImport(s)),
     ...computedImports(code),
+    ...packageLiterals(code),
     ...SCOPED.filter((p) => source.includes(p)),
     ...(spend ? [spend[0]] : []),
   ];

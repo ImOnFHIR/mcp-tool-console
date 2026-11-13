@@ -320,7 +320,18 @@ test("the AI-SDK ban catches every listed vendor in every import form, and nothi
     );
   }
   // A scoped vendor name anywhere in the text, as the ban before this one caught it.
-  assert.deepEqual(await aiSdkFindings(`const name = "@anthropic-ai/sdk";`), ["@anthropic-ai/"]);
+  assert.ok((await aiSdkFindings(`// see @anthropic-ai/sdk`)).includes("@anthropic-ai/"));
+  // A listed name as a string: createRequire's local require is invisible to the parse.
+  for (const f of [
+    `const require = createRequire(import.meta.url); const m = require("openai");`,
+    `const m = createRequire(import.meta.url)("@ai-sdk/google");`,
+    `const name = "ollama";`,
+  ]) {
+    assert.ok(
+      (await aiSdkFindings(f)).some((x) => isAiSdk(x)),
+      f,
+    );
+  }
   assert.deepEqual(await aiSdkFindings(`import { charge } from "./spend.js";`), ["spend.js"]);
   // Declared: any of the four maps, and the target of an npm alias.
   assert.deepEqual(declared({ dependencies: { openai: "6.0.0" } }), ["openai"]);
