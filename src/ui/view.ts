@@ -2,14 +2,58 @@
  * ToolView v1: one result shape any tool can return (in result `_meta["com.imonfhir/view"]`) so a
  * single renderer can show it well: the workbench, the dev console and the in-Claude view.
  * Machine-readable copy: docs/tool-view.schema.json. Pure types + a hand-written checker (no ajv).
+ *
+ * Contract 1.1 (still `v: 1`, optional fields only) lets a view say who wrote it and what it cites,
+ * in a way a 1.0 renderer still shows: the machine-written label rides in `banner`, and the cited
+ * passages are bullets in a section with id "sources". `provenance` and `refs` are extras for
+ * newer renderers and machines; they are never the only place a reader can learn either fact.
  */
 export type Status = "good" | "bad" | "warn" | "info" | "error";
 export const STATUSES: readonly Status[] = ["good", "bad", "warn", "info", "error"];
+
+/**
+ * The fixed start of the banner on any view a model helped write. It follows the site's
+ * existing label for model-written text ("machine summary · unreviewed · <model> · <date>").
+ */
+export const AI_LABEL = "Machine-written";
+/** The section that lists every cited passage, so a 1.0 renderer shows them as ordinary bullets. */
+export const SOURCES_SECTION_ID = "sources";
+export const EGRESS = ["none", "model-provider"] as const;
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/;
+
+/** Who wrote a view's words, from what, and where its input went. Contract 1.1. */
+export interface Provenance {
+  /**
+   * "deterministic": the tool computed every word. "model": a language model wrote some of them.
+   * Any value other than "deterministic" is treated as "model", so a newer mode can't skip the label.
+   */
+  mode: "deterministic" | "model";
+  /** Who outside the tool received this run's input to make the result. */
+  egress: (typeof EGRESS)[number];
+  /** sha256 of the deterministic result this view reports or explains: "sha256:<64 hex>". */
+  baseDigest: string;
+  /** sha256 of the committed corpus or pack the cited passages come from, or "none". */
+  corpusDigest: string;
+  /** Every passage this view cites; each is a bullet in the "sources" section. */
+  passageIds: string[];
+  /** What backs the words, e.g. "validator-output", "spec-text", "recorded-run". */
+  evidenceType: string;
+  /** The model that wrote the words. Required when mode isn't "deterministic". */
+  model?: string;
+  promptVersion?: string;
+  /** What writing the words cost, in US dollars. */
+  costUsd?: number;
+  /** When the words were written: an ISO date or date-time. Required when mode isn't "deterministic". */
+  at?: string;
+}
 
 export interface Bullet {
   text: string;
   status?: Status;
   detail?: string;
+  /** Contract 1.1: ids of the passages this line rests on; each must be in `provenance.passageIds`. */
+  refs?: string[];
 }
 export type Cell = string | { text: string; status?: Status; mono?: boolean };
 export type Block =
@@ -46,16 +90,19 @@ export interface ToolView {
   /** Follow-up runs: the same tool with these arguments changed. */
   next?: { label: string; patch: Record<string, unknown> }[];
   footnote?: string;
+  /** Contract 1.1: who wrote the words and what they cite. A 1.0 renderer ignores it. */
+  provenance?: Provenance;
 }
 
 export const LIMITS = { bulletChars: 110, tableRows: 200, viewBytes: 50_000 } as const;
 
+const isObj = (x: unknown): x is Record<string, any> =>
+  !!x && typeof x === "object" && !Array.isArray(x);
+const str = (x: unknown): x is string => typeof x === "string" && x.trim().length > 0;
+
 /** Problems with a view, as plain sentences. Empty means valid. */
 export function checkView(v: unknown): string[] {
   const p: string[] = [];
-  const isObj = (x: unknown): x is Record<string, any> =>
-    !!x && typeof x === "object" && !Array.isArray(x);
-  const str = (x: unknown) => typeof x === "string" && x.trim().length > 0;
   const status = (x: unknown, where: string) => {
     if (x !== undefined && !STATUSES.includes(x as Status))
       p.push(`${where}: status must be one of ${STATUSES.join(", ")}`);
@@ -76,7 +123,9 @@ export function checkView(v: unknown): string[] {
     if (!str(s?.label) || typeof s?.value !== "string") p.push(`stats[${i}] needs label and value`);
     status(s?.status, `stats[${i}]`);
   }
-  const bullets = (items: unknown, where: string) => {
+  // Every passage id a bullet cites, and whether that bullet is in the "sources" section.
+  const cited: { ref: string; where: string; inSources: boolean }[] = [];
+  const bullets = (items: unknown, where: string, inSources = false) => {
     if (!Array.isArray(items)) {
       p.push(`${where} must be a list`);
       return;
@@ -88,6 +137,10 @@ export function checkView(v: unknown): string[] {
           `${where}[${i}] is ${b.text.length} characters; keep bullets to ${LIMITS.bulletChars}`,
         );
       status(b?.status, `${where}[${i}]`);
+      if (b?.refs === undefined) continue;
+      if (!Array.isArray(b.refs) || !b.refs.every(str))
+        p.push(`${where}[${i}].refs must be a list of passage ids`);
+      else for (const ref of b.refs) cited.push({ ref, where: `${where}[${i}]`, inSources });
     }
   };
   if (v.bullets !== undefined) bullets(v.bullets, "bullets");
@@ -103,7 +156,7 @@ export function checkView(v: unknown): string[] {
     }
     for (const [j, b] of s.blocks.entries()) {
       const bw = `${w}.blocks[${j}]`;
-      if (b?.kind === "bullets") bullets(b.items, `${bw}.items`);
+      if (b?.kind === "bullets") bullets(b.items, `${bw}.items`, s?.id === SOURCES_SECTION_ID);
       else if (b?.kind === "table") {
         if (!Array.isArray(b.columns) || !b.columns.length) p.push(`${bw} needs columns`);
         if (!Array.isArray(b.rows)) p.push(`${bw} needs rows`);
@@ -123,8 +176,120 @@ export function checkView(v: unknown): string[] {
   }
   for (const [i, n] of list(v.next, "next").entries())
     if (!str(n?.label) || !isObj(n?.patch)) p.push(`next[${i}] needs label and patch`);
+  checkProvenance(v, cited, p);
   const size = new TextEncoder().encode(JSON.stringify(v)).length; // works in Node and the browser
   if (size > LIMITS.viewBytes)
     p.push(`the view is ${size} bytes; keep it under ${LIMITS.viewBytes}`);
   return p;
+}
+
+/** Contract 1.1 rules: provenance's shape, the machine-written label, and citations that resolve. */
+function checkProvenance(
+  v: Record<string, any>,
+  cited: { ref: string; where: string; inSources: boolean }[],
+  p: string[],
+): void {
+  const pv = v.provenance;
+  if (pv === undefined) {
+    if (cited.length) p.push("refs need provenance.passageIds to resolve against");
+    return;
+  }
+  if (!pv || typeof pv !== "object" || Array.isArray(pv)) {
+    p.push("provenance must be an object");
+    return;
+  }
+  if (!str(pv.mode)) p.push("provenance.mode is required");
+  if (!EGRESS.includes(pv.egress)) p.push(`provenance.egress must be one of ${EGRESS.join(", ")}`);
+  if (typeof pv.baseDigest !== "string" || !DIGEST.test(pv.baseDigest))
+    p.push('provenance.baseDigest must be "sha256:" and 64 lowercase hex characters');
+  if (
+    pv.corpusDigest !== "none" &&
+    !(typeof pv.corpusDigest === "string" && DIGEST.test(pv.corpusDigest))
+  )
+    p.push('provenance.corpusDigest must be a sha256 digest or "none"');
+  const ids: string[] | undefined =
+    Array.isArray(pv.passageIds) && pv.passageIds.every(str) ? pv.passageIds : undefined;
+  if (!ids) p.push("provenance.passageIds must be a list of passage ids");
+  else if (new Set(ids).size !== ids.length) p.push("provenance.passageIds lists a passage twice");
+  if (!str(pv.evidenceType)) p.push("provenance.evidenceType is required");
+  for (const k of ["model", "promptVersion"])
+    if (pv[k] !== undefined && !str(pv[k])) p.push(`provenance.${k} must be text`);
+  if (
+    pv.costUsd !== undefined &&
+    !(typeof pv.costUsd === "number" && Number.isFinite(pv.costUsd) && pv.costUsd >= 0)
+  )
+    p.push("provenance.costUsd must be a number, 0 or more");
+  if (
+    pv.at !== undefined &&
+    !(typeof pv.at === "string" && ISO_DATE.test(pv.at) && !Number.isNaN(Date.parse(pv.at)))
+  )
+    p.push("provenance.at must be an ISO date or date-time");
+
+  if (pv.mode !== "deterministic") {
+    // A model wrote some of this. Say so, with the model and the date, where a 1.0 renderer shows it.
+    if (!str(pv.model)) p.push("a machine-written view needs provenance.model");
+    if (pv.at === undefined) p.push("a machine-written view needs provenance.at");
+    if (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL)) {
+      p.push(`a machine-written view's banner must start with "${AI_LABEL}"`);
+    } else {
+      if (str(pv.model) && !v.banner.includes(pv.model))
+        p.push("a machine-written view's banner must name provenance.model");
+      if (typeof pv.at === "string" && !v.banner.includes(pv.at.slice(0, 10)))
+        p.push("a machine-written view's banner must give the date in provenance.at");
+    }
+  } else if (pv.egress === "model-provider") {
+    p.push("a deterministic view can't have sent its input to a model provider");
+  }
+
+  if (!ids) return;
+  // Every cited passage is a bullet in "sources" (so a 1.0 renderer lists it), and every ref resolves.
+  const listed = new Set(cited.filter((c) => c.inSources).map((c) => c.ref));
+  for (const id of ids)
+    if (!listed.has(id))
+      p.push(`passage ${id} has no bullet in the "${SOURCES_SECTION_ID}" section that cites it`);
+  for (const c of cited)
+    if (!ids.includes(c.ref))
+      p.push(`${c.where} cites ${c.ref}, which provenance.passageIds doesn't list`);
+}
+
+/** What `aiOrDeterministic` chose, and why it abstained if it did. */
+export interface Chosen {
+  view: ToolView;
+  abstained: boolean;
+  problems: string[];
+}
+
+/**
+ * Abstain means: return the deterministic result alone. A model-written view is returned only when
+ * it passes every check, explains this exact base result (same `baseDigest`) and keeps its verdict
+ * (status, headline and stats unchanged). Otherwise the base comes back untouched. Nothing from the
+ * candidate is repaired, clamped to a default or merged in.
+ */
+export function aiOrDeterministic(candidate: unknown, base: ToolView): Chosen {
+  const baseProblems = checkView(base);
+  const bp = base.provenance;
+  if (bp?.mode !== "deterministic")
+    baseProblems.push("the base needs provenance with mode deterministic");
+  if (baseProblems.length || !bp)
+    throw new Error(
+      `aiOrDeterministic: the base is not a valid deterministic view: ${baseProblems.join("; ")}`,
+    );
+  const problems = checkView(candidate);
+  const c = candidate as ToolView;
+  if (!problems.length) {
+    if (!c.provenance) problems.push("the candidate has no provenance");
+    else if (c.provenance.mode === "deterministic")
+      problems.push("the candidate says no model wrote it");
+    else {
+      if (c.provenance.baseDigest !== bp.baseDigest)
+        problems.push("the candidate explains a different result (baseDigest differs)");
+      if (c.status !== base.status) problems.push("the candidate changes the status");
+      if (c.headline !== base.headline) problems.push("the candidate changes the headline");
+      if (JSON.stringify(c.stats ?? []) !== JSON.stringify(base.stats ?? []))
+        problems.push("the candidate changes the stats");
+    }
+  }
+  return problems.length
+    ? { view: base, abstained: true, problems }
+    : { view: c, abstained: false, problems };
 }

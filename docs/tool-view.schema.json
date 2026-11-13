@@ -1,16 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://imonfhir.com/ns/tool-view/v1.schema.json",
-  "title": "ToolView v1",
-  "description": "A result view any MCP tool can return in result _meta[\"com.imonfhir/view\"]. Source of truth: src/ui/view.ts.",
+  "title": "ToolView v1 (contract 1.1)",
+  "description": "A result view any MCP tool can return in result _meta[\"com.imonfhir/view\"]. Source of truth: src/ui/view.ts. Contract 1.1 adds optional provenance and bullet refs; v stays 1. checkView is stricter than this schema: it also requires a machine-written banner to name the model and the date, every cited passage to be a bullet in the \"sources\" section, and every ref to resolve.",
   "type": "object",
   "required": ["v", "status", "headline"],
   "$defs": {
     "status": { "enum": ["good", "bad", "warn", "info", "error"] },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "bullet": {
       "type": "object",
       "required": ["text"],
-      "properties": { "text": { "type": "string", "maxLength": 110 }, "status": { "$ref": "#/$defs/status" }, "detail": { "type": "string" } }
+      "properties": {
+        "text": { "type": "string", "maxLength": 110 },
+        "status": { "$ref": "#/$defs/status" },
+        "detail": { "type": "string" },
+        "refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Contract 1.1: ids of the passages this line rests on; each is in provenance.passageIds." }
+      }
     },
     "cell": {
       "oneOf": [
@@ -21,14 +27,36 @@
     "block": {
       "type": "object",
       "required": ["kind"],
-      "properties": { "kind": { "type": "string", "description": "bullets | table | kv | text | code; unknown kinds render as code" } }
+      "properties": { "kind": { "type": "string", "description": "bullets | table | kv | text | code; unknown kinds render as code" } },
+      "if": { "properties": { "kind": { "const": "bullets" } } },
+      "then": { "properties": { "items": { "type": "array", "items": { "$ref": "#/$defs/bullet" } } } }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Contract 1.1: who wrote the view's words, from what, and where its input went. A 1.0 renderer ignores it, so the label also rides in banner and the passages in the \"sources\" section.",
+      "required": ["mode", "egress", "baseDigest", "corpusDigest", "passageIds", "evidenceType"],
+      "properties": {
+        "mode": { "type": "string", "minLength": 1, "description": "\"deterministic\": the tool computed every word. \"model\": a language model wrote some. Any other value is treated as \"model\"." },
+        "egress": { "enum": ["none", "model-provider"], "description": "Who outside the tool received this run's input to make the result." },
+        "baseDigest": { "$ref": "#/$defs/digest", "description": "sha256 of the deterministic result this view reports or explains." },
+        "corpusDigest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "const": "none" }], "description": "sha256 of the committed corpus or pack the passages come from, or \"none\"." },
+        "passageIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "evidenceType": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "promptVersion": { "type": "string", "minLength": 1 },
+        "costUsd": { "type": "number", "minimum": 0 },
+        "at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2}))?$" }
+      },
+      "if": { "properties": { "mode": { "const": "deterministic" } } },
+      "then": { "properties": { "egress": { "const": "none" } } },
+      "else": { "required": ["model", "at"] }
     }
   },
   "properties": {
     "v": { "const": 1 },
     "status": { "$ref": "#/$defs/status" },
     "headline": { "type": "string", "description": "One sentence." },
-    "banner": { "type": "string" },
+    "banner": { "type": "string", "description": "Optional notice. On a machine-written view (provenance.mode other than \"deterministic\") it is required and starts with \"Machine-written\"." },
     "stats": { "type": "array", "items": { "type": "object", "required": ["label", "value"], "properties": { "label": { "type": "string" }, "value": { "type": "string" }, "status": { "$ref": "#/$defs/status" } } } },
     "bullets": { "type": "array", "items": { "$ref": "#/$defs/bullet" } },
     "sections": {
@@ -40,6 +68,15 @@
       }
     },
     "next": { "type": "array", "items": { "type": "object", "required": ["label", "patch"], "properties": { "label": { "type": "string" }, "patch": { "type": "object" } } } },
-    "footnote": { "type": "string" }
+    "footnote": { "type": "string" },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "if": {
+    "required": ["provenance"],
+    "properties": { "provenance": { "required": ["mode"], "properties": { "mode": { "not": { "const": "deterministic" } } } } }
+  },
+  "then": {
+    "required": ["banner"],
+    "properties": { "banner": { "pattern": "^Machine-written" } }
   }
 }

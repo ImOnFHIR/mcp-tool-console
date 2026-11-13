@@ -29,6 +29,7 @@ export const VIEW_CSS = `
 .tv-pill.tv-warn { background: var(--warn-bg); color: var(--warn); } .tv-pill.tv-info { background: var(--info-bg); color: var(--info); }
 .tv-headline.tv-bad span:last-child, .tv-headline.tv-error span:last-child { color: var(--bad); }
 .tv-banner { margin: 0; font-size: 0.85rem; color: var(--muted); border-left: 3px solid var(--accent); padding-left: 0.6rem; }
+.tv-provenance { margin: 0; font-size: 0.8rem; color: var(--muted); } .tv-refs { font-size: 0.78rem; font-family: var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .tv-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.6rem; }
 .tv-stat { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 0.7rem 0.8rem; display: grid; gap: 0.15rem; min-width: 0; }
 .tv-stat-label { font-size: 0.82rem; color: var(--muted); } .tv-stat-value { font: 600 1.15rem/1.2 var(--display); font-variant-numeric: tabular-nums; }

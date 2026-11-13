@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "status": "bad",
+  "headline": "1 rule failed: the synthetic claim names no requesting provider.",
+  "banner": "Synthetic data only.",
+  "stats": [
+    {
+      "label": "Rules failed",
+      "value": "1",
+      "status": "bad"
+    }
+  ],
+  "bullets": [
+    {
+      "text": "Claim.provider is missing.",
+      "status": "bad",
+      "refs": [
+        "syn-guide@1.0.0#req-1"
+      ]
+    }
+  ]
+}

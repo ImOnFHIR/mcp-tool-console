@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "status": "bad",
+  "headline": "1 rule failed: the synthetic claim names no requesting provider.",
+  "banner": "Synthetic data only.",
+  "stats": [
+    {
+      "label": "Rules failed",
+      "value": "1",
+      "status": "bad"
+    }
+  ],
+  "bullets": [
+    {
+      "text": "Claim.provider is missing.",
+      "status": "bad"
+    }
+  ],
+  "provenance": {
+    "mode": "deterministic",
+    "egress": "model-provider",
+    "baseDigest": "sha256:724ed501168dca3f1e09a9ff3e44b72b6ad1705045f6b17efa242f5aa326d005",
+    "corpusDigest": "none",
+    "passageIds": [],
+    "evidenceType": "validator-output"
+  }
+}
