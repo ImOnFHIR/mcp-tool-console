@@ -219,21 +219,13 @@ export function checkView(v: unknown): string[] {
   return p;
 }
 
-/** Contract 1.1 rules: provenance's shape, the AI Interpretation label, and citations that resolve. */
-function checkProvenance(
-  v: Record<string, any>,
-  cited: { ref: string; where: string; inSources: boolean }[],
-  p: string[],
-): void {
-  const pv = v.provenance;
-  if (pv === undefined) {
-    if (cited.length) p.push("refs need provenance.passageIds to resolve against");
-    return;
-  }
-  if (!pv || typeof pv !== "object" || Array.isArray(pv)) {
-    p.push("provenance must be an object");
-    return;
-  }
+/**
+ * Problems with a provenance record on its own: its shape, and that an AI interpretation names its
+ * model and date. Shared by checkView and the recorded-run reader, so the two can't drift.
+ */
+export function provenanceProblems(pv: unknown): string[] {
+  if (!isObj(pv)) return ["provenance must be an object"];
+  const p: string[] = [];
   if (!str(pv.mode)) p.push("provenance.mode is required");
   if (!EGRESS.includes(pv.egress)) p.push(`provenance.egress must be one of ${EGRESS.join(", ")}`);
   if (typeof pv.baseDigest !== "string" || !DIGEST.test(pv.baseDigest))
@@ -243,8 +235,7 @@ function checkProvenance(
     !(typeof pv.corpusDigest === "string" && DIGEST.test(pv.corpusDigest))
   )
     p.push('provenance.corpusDigest must be a sha256 digest or "none"');
-  const ids: string[] | undefined =
-    Array.isArray(pv.passageIds) && pv.passageIds.every(str) ? pv.passageIds : undefined;
+  const ids = passageIds(pv);
   if (!ids) p.push("provenance.passageIds must be a list of passage ids");
   else if (new Set(ids).size !== ids.length) p.push("provenance.passageIds lists a passage twice");
   if (!str(pv.evidenceType)) p.push("provenance.evidenceType is required");
@@ -257,16 +248,37 @@ function checkProvenance(
     p.push("provenance.costUsd must be a number, 0 or more");
   if (pv.at !== undefined && !isIsoDate(pv.at))
     p.push("provenance.at must be an ISO date or date-time");
-
   if (pv.mode !== "deterministic") {
-    // A model wrote some of this. Say so where a 1.0 renderer shows it: the banner. The model and
-    // the date are data in provenance; newer renderers show them on the provenance line.
+    // The model and the date are data here; newer renderers show them on the provenance line.
     if (!str(pv.model)) p.push("an AI interpretation needs provenance.model");
     if (pv.at === undefined) p.push("an AI interpretation needs provenance.at");
-    if (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL))
-      p.push(`an AI interpretation's banner must start with "${AI_LABEL}"`);
   }
+  return p;
+}
 
+const passageIds = (pv: Record<string, any>): string[] | undefined =>
+  Array.isArray(pv.passageIds) && pv.passageIds.every(str) ? pv.passageIds : undefined;
+
+/** Contract 1.1 rules for a view: provenance's shape, the label in the banner, citations that resolve. */
+function checkProvenance(
+  v: Record<string, any>,
+  cited: { ref: string; where: string; inSources: boolean }[],
+  p: string[],
+): void {
+  const pv = v.provenance;
+  if (pv === undefined) {
+    if (cited.length) p.push("refs need provenance.passageIds to resolve against");
+    return;
+  }
+  p.push(...provenanceProblems(pv));
+  if (!isObj(pv)) return;
+  // A model wrote some of this. Say so where a 1.0 renderer shows it: the banner.
+  if (
+    pv.mode !== "deterministic" &&
+    (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL))
+  )
+    p.push(`an AI interpretation's banner must start with "${AI_LABEL}"`);
+  const ids = passageIds(pv);
   if (!ids) return;
   // Every cited passage is a bullet in "sources" (so a 1.0 renderer lists it), and every ref resolves.
   const listed = new Set(cited.filter((c) => c.inSources).map((c) => c.ref));

@@ -16,7 +16,7 @@ import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readCatalog } from "../src/console/catalog.js";
 import { loadConsoleConfig, type ServerConfig } from "../src/console/config.js";
-import { buildPackage, isSafeName, readRuns } from "../src/package.js";
+import { buildPackage, isSafeName, readRuns, UNSCORED } from "../src/package.js";
 
 const sdk = (p: string) => pathToFileURL(resolve("node_modules/@modelcontextprotocol/sdk", p)).href;
 const CLI = resolve("dist/src/console/cli.js");
@@ -67,6 +67,17 @@ const goodRun = {
   costUsd: 0,
   lockDigest: "sha256:abc",
 };
+/** Provenance for a deterministic recording (contract 1.1's shape; digest of a stated string). */
+const detProvenance = {
+  mode: "deterministic",
+  egress: "none",
+  baseDigest: `sha256:${createHash("sha256").update("goodRun's structuredContent").digest("hex")}`,
+  corpusDigest: "none",
+  passageIds: [],
+  evidenceType: "tool-output",
+};
+const goodRunV2 = { ...goodRun, v: 2, lockDigest: UNSCORED, provenance: detProvenance };
+
 function runsDir(files: Record<string, unknown>) {
   const dir = tmp();
   for (const [name, body] of Object.entries(files))
@@ -150,7 +161,9 @@ test("package: a recorded run must have exactly the run shape; the file is named
   const bad: Record<string, any> = {
     "extra-key.json": { ...goodRun, note: "x" },
     "missing-key.json": (({ model: _m, ...rest }) => rest)(goodRun),
-    "wrong-v.json": { ...goodRun, v: 2 },
+    "wrong-v.json": { ...goodRun, v: 3 },
+    "v1-with-provenance.json": { ...goodRun, provenance: detProvenance },
+    "v2-without-provenance.json": { ...goodRun, v: 2, lockDigest: UNSCORED },
     "cost-text.json": { ...goodRun, costUsd: "0.10" },
     "args-list.json": { ...goodRun, args: [] },
   };
@@ -179,6 +192,75 @@ test("package: valid runs are copied byte for byte under runs/<tool>/", () => {
   // A run for a tool nobody packages is an error, not a dropped file.
   const orphan = runsDir({ "x.json": { ...goodRun, tool: "nothing" } });
   assert.equal(cli(dir, "--runs", orphan).status, 1);
+});
+
+test('package: a v: 2 run carries provenance; its lockDigest is an eval lock\'s digest or "unscored"', () => {
+  const ok = {
+    "unscored.json": goodRunV2,
+    "scored.json": { ...goodRunV2, lockDigest: `sha256:${"a".repeat(64)}` },
+    "scored-bare.json": { ...goodRunV2, lockDigest: "b".repeat(64) },
+    "machine.json": {
+      ...goodRunV2,
+      model: "example-model-1",
+      costUsd: 0.25,
+      provenance: {
+        ...detProvenance,
+        mode: "model",
+        model: "example-model-1",
+        costUsd: 0.25,
+        at: "2026-11-12",
+      },
+    },
+  };
+  assert.deepEqual(
+    readRuns(runsDir(ok))
+      .map((r) => r.file)
+      .toSorted(),
+    Object.keys(ok).toSorted(),
+  );
+  const bad: Record<string, [unknown, RegExp]> = {
+    "made-up-lock.json": [
+      { ...goodRunV2, lockDigest: "sha256:abc" },
+      /lockDigest must be an eval lock's sha256 or "unscored"/,
+    ],
+    "no-evidence.json": [
+      { ...goodRunV2, provenance: { ...detProvenance, evidenceType: "" } },
+      /provenance: provenance\.evidenceType is required/,
+    ],
+    "machine-no-model.json": [
+      { ...goodRunV2, provenance: { ...detProvenance, mode: "model", at: "2026-11-12" } },
+      /an AI interpretation needs provenance\.model/,
+    ],
+    "model-mismatch.json": [
+      {
+        ...goodRunV2,
+        provenance: { ...detProvenance, mode: "model", model: "other-model", at: "2026-11-12" },
+      },
+      /provenance\.model must match model/,
+    ],
+    "cost-mismatch.json": [
+      { ...goodRunV2, provenance: { ...detProvenance, costUsd: 1 } },
+      /provenance\.costUsd must match costUsd/,
+    ],
+  };
+  for (const [name, [body, why]] of Object.entries(bad)) {
+    assert.throws(
+      () => readRuns(runsDir({ [name]: body })),
+      (e: Error) => e.message.includes(`runs/${name}`) && why.test(e.message),
+      name,
+    );
+  }
+});
+
+test("package: the decoy lab's recorded run (v: 1, 2026-11-04) still reads exactly as before", () => {
+  // Byte-for-byte copy of member-match-decoy-lab's package/decoy-lab/runs/score_member_match/ai-2026-11-04.json
+  // at 8cd33b1 (PROVENANCE.md). Old runs stay valid: v: 1 is read with its own exact key set.
+  const dir = tmp();
+  const text = readFileSync("test/fixtures/runs/decoy-lab-ai-2026-11-04.json", "utf8");
+  writeFileSync(join(dir, "ai-2026-11-04.json"), text);
+  const runs = readRuns(dir);
+  assert.deepEqual(runs, [{ file: "ai-2026-11-04.json", text, tool: "score_member_match" }]);
+  assert.equal(JSON.parse(text).v, 1);
 });
 
 test("package: a recorded run whose view fails checkView fails the command", () => {

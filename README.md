@@ -233,7 +233,9 @@ package/<server-id>/
 
 **What it runs.** Only the presets of tools that are `readOnlyHint: true` and declared `cost: { free: true }`. A preset on any other tool is left alone and the command says so. Every view must pass `checkView`, or the command fails.
 
-**Recorded runs.** Each file in `--runs` must be exactly `{ v: 1, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest }` (its `view` must pass `checkView`). Any other shape fails the command and names the file.
+**Recorded runs.** Each file in `--runs` must have exactly one of two shapes, and its `view` must pass `checkView`. Any other shape fails the command and names the file.
+- `v: 1`: `{ v, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest }`, read exactly as it always was.
+- `v: 2`: the same keys plus `provenance` (contract 1.1's shape, checked by the same rules as a view's). `lockDigest` is the sha256 of the eval lock that scored the run (with or without `sha256:`), or `"unscored"` for a recording no lock scored, instead of a made-up digest. When `provenance` gives `model` or `costUsd`, they must match the envelope's.
 
 **It refuses a dirty tree.** If `git status` shows an uncommitted change to a tracked file, in the folder you run it in or in the repository of any server it will start (its `cwd`), or either isn't in a git repository, the command exits 1 and writes nothing, not even the output folder. Untracked files don't count: the folders this command writes are untracked until you commit them. Commit your change first, then package, then commit the package.
 
@@ -288,7 +290,7 @@ Choose it with `CONSOLE_MODE=hosted`. Its configuration comes only from the envi
 <dir>/<server-id>/package.json
                  /tools/*.json            one tools/list entry each, with _meta
                  /views/**/*.json         ToolView conformance views
-                 /runs/<tool>/*.json      { v: 1, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest }
+                 /runs/<tool>/*.json      { v: 1 or 2, recorded, tool, args, structuredContent, view, model, costUsd, lockDigest, provenance (v: 2) }
                  /PROVENANCE.json
 ```
 Views and `PROVENANCE.json` are part of the format but `/api/catalog` doesn't serve them yet. Ids and file names are matched against a short pattern and symbolic links are skipped.
