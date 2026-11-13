@@ -259,17 +259,12 @@ function checkProvenance(
     p.push("provenance.at must be an ISO date or date-time");
 
   if (pv.mode !== "deterministic") {
-    // A model wrote some of this. Say so, with the model and the date, where a 1.0 renderer shows it.
+    // A model wrote some of this. Say so where a 1.0 renderer shows it: the banner. The model and
+    // the date are data in provenance; newer renderers show them on the provenance line.
     if (!str(pv.model)) p.push("an AI interpretation needs provenance.model");
     if (pv.at === undefined) p.push("an AI interpretation needs provenance.at");
-    if (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL)) {
+    if (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL))
       p.push(`an AI interpretation's banner must start with "${AI_LABEL}"`);
-    } else {
-      if (str(pv.model) && !v.banner.includes(pv.model))
-        p.push("an AI interpretation's banner must name provenance.model");
-      if (typeof pv.at === "string" && !v.banner.includes(pv.at.slice(0, 10)))
-        p.push("an AI interpretation's banner must give the date in provenance.at");
-    }
   }
 
   if (!ids) return;

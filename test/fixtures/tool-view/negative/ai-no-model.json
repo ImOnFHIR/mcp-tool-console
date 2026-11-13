@@ -2,7 +2,7 @@
   "v": 1,
   "status": "bad",
   "headline": "1 rule failed: the synthetic claim names no requesting provider.",
-  "banner": "AI Interpretation · unreviewed · 2026-11-12.",
+  "banner": "AI Interpretation",
   "stats": [
     {
       "label": "Rules failed",

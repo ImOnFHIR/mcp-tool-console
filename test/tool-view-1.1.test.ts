@@ -44,10 +44,6 @@ const NEGATIVE: Record<string, { schemaPath: string | null; problem: RegExp }> =
     problem: /banner must start with "AI Interpretation"/,
   },
   "ai-no-model": { schemaPath: "/provenance", problem: /needs provenance\.model/ },
-  "ai-banner-without-model-or-date": {
-    schemaPath: null,
-    problem: /banner must name provenance\.model/,
-  },
   "bad-base-digest": { schemaPath: "/provenance/baseDigest", problem: /baseDigest must be/ },
   "ai-impossible-date": { schemaPath: null, problem: /provenance\.at must be an ISO date/ },
   "passage-not-in-sources": {
@@ -97,8 +93,9 @@ for (const [id, { schemaPath, problem }] of Object.entries(NEGATIVE)) {
   });
 }
 
-test("checkView: an AI interpretation must carry the label, the model and the date in its banner", () => {
+test("checkView: an AI interpretation's banner starts with the label; the label alone is enough", () => {
   assert.deepEqual(checkView(machine()), []);
+  assert.equal(machine().banner, AI_LABEL, "the conformance view shows the label alone");
   const v = machine();
   v.banner = "Synthetic data only.";
   assert.ok(checkView(v).some((p) => p.includes(`must start with "${AI_LABEL}"`)));
