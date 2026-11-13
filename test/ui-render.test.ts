@@ -75,7 +75,8 @@ test("render: unknown block kinds are shown, not dropped; sections start collaps
 });
 
 test("render: tables carry data-label for phone cards", () => {
-  const html = renderView(views[0][1]);
+  // By name, not views[0]: which file sorts first in test/views is not this test's business.
+  const html = renderView(views.find(([f]) => f === "all-correct.json")![1]);
   assert.match(html, /<td data-label="Test">/);
 });
 

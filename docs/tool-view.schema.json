@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://imonfhir.com/ns/tool-view/v1.schema.json",
   "title": "ToolView v1 (contract 1.1)",
-  "description": "A result view any MCP tool can return in result _meta[\"com.imonfhir/view\"]. Source of truth: src/ui/view.ts. Contract 1.1 adds optional provenance and bullet refs; v stays 1. checkView is stricter than this schema: it also requires a machine-written banner to name the model and the date, every cited passage to be a bullet in the \"sources\" section, and every ref to resolve.",
+  "description": "A result view any MCP tool can return in result _meta[\"com.imonfhir/view\"]. Source of truth: src/ui/view.ts. Contract 1.1 adds optional provenance and bullet refs; v stays 1. checkView is stricter than this schema: it also requires an AI interpretation's banner to name the model and the date, every cited passage to be a bullet in the \"sources\" section, and every ref to resolve.",
   "type": "object",
   "required": ["v", "status", "headline"],
   "$defs": {
@@ -55,7 +55,7 @@
     "v": { "const": 1 },
     "status": { "$ref": "#/$defs/status" },
     "headline": { "type": "string", "description": "One sentence." },
-    "banner": { "type": "string", "description": "Optional notice. On a machine-written view (provenance.mode other than \"deterministic\") it is required and starts with \"Machine-written\"." },
+    "banner": { "type": "string", "description": "Optional notice. On an AI interpretation (provenance.mode other than \"deterministic\") it is required and starts with \"AI Interpretation\"." },
     "stats": { "type": "array", "items": { "type": "object", "required": ["label", "value"], "properties": { "label": { "type": "string" }, "value": { "type": "string" }, "status": { "$ref": "#/$defs/status" } } } },
     "bullets": { "type": "array", "items": { "$ref": "#/$defs/bullet" } },
     "sections": {
@@ -76,6 +76,6 @@
   },
   "then": {
     "required": ["banner"],
-    "properties": { "banner": { "pattern": "^Machine-written" } }
+    "properties": { "banner": { "pattern": "^AI Interpretation" } }
   }
 }

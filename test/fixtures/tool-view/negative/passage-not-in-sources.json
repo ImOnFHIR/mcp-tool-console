@@ -2,7 +2,7 @@
   "v": 1,
   "status": "bad",
   "headline": "1 rule failed: the synthetic claim names no requesting provider.",
-  "banner": "Machine-written · unreviewed · example-model-1 · 2026-11-12. The tool's own result is the source of truth.",
+  "banner": "AI Interpretation · unreviewed · example-model-1 · 2026-11-12. The tool's own result is the source of truth.",
   "stats": [
     {
       "label": "Rules failed",

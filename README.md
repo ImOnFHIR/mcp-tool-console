@@ -152,7 +152,7 @@ The form turns these into the right control:
 | `v` | Always `1` |
 | `status` | `good`, `bad`, `warn`, `info` or `error` |
 | `headline` | One sentence, one line |
-| `banner` | Optional notice, such as "Synthetic data only". Required on a machine-written view (below) |
+| `banner` | Optional notice, such as "Synthetic data only". Required on an AI interpretation (below) |
 | `stats[]` | Tiles: `{ label, value, status? }` |
 | `bullets[]` | `{ text ≤ 110 chars, status?, detail?, refs? }`; the detail opens on click; `refs` are cited passage ids |
 | `sections[]` | Collapsed unless `open`; blocks: `bullets`, `table`, `kv`, `text`, `code` |
@@ -168,7 +168,7 @@ The form turns these into the right control:
 ### Who wrote a result, and what it cites (contract 1.1)
 Still `v: 1`: these fields are optional, and a renderer written before them still shows the two facts that matter, because neither depends on a new field.
 
-- **The label rides in `banner`.** When `provenance.mode` is anything other than `"deterministic"`, the banner must start with `Machine-written` and name the model and the date, for example `Machine-written · unreviewed · example-model-1 · 2026-11-12.` A new mode a checker doesn't know counts as machine-written, so it can't skip the label.
+- **The label rides in `banner`.** When `provenance.mode` is anything other than `"deterministic"`, the banner must start with `AI Interpretation` and name the model and the date, for example `AI Interpretation · unreviewed · example-model-1 · 2026-11-12.` A new mode a checker doesn't know counts as an AI interpretation, so it can't skip the label.
 - **Cited passages are bullets in a section with id `sources`.** Every id in `provenance.passageIds` must be a `refs` entry on a bullet there, and every `refs` entry anywhere must be in `passageIds`.
 - **`provenance`** is for newer renderers and for machines:
 
@@ -180,12 +180,12 @@ Still `v: 1`: these fields are optional, and a renderer written before them stil
 | `corpusDigest` | `sha256:` of the committed corpus or pack the passages come from, or `"none"` |
 | `passageIds[]` | Every passage the view cites |
 | `evidenceType` | What backs the words, such as `validator-output` or `spec-text` |
-| `model`, `at` | The model and the date (ISO). Required on a machine-written view |
+| `model`, `at` | The model and the date (ISO). Required on an AI interpretation |
 | `promptVersion`, `costUsd` | Optional |
 
 `checkView` enforces all of this. `docs/tool-view.schema.json` carries what a JSON Schema can express; the cross-field rules (model and date in the banner, sources, refs that resolve) are `checkView`'s alone. The renderer shows the provenance in one line of plain words and the refs after each bullet's text.
 
-**Abstain means the deterministic result alone.** `aiOrDeterministic(candidate, base, runEgress)` returns a machine-written view only when it passes `checkView`, explains the same result (`baseDigest`), keeps its status, headline and stats, and gives `runEgress` (where this run's input actually went) as its `egress`. Otherwise it returns `base`, never repairing a field or filling in a default. If a model provider received the input, the returned base's `egress` says so: abstaining can't take the input back. The base is checked as it would come back, so leave it room under the size limit for that change.
+**Abstain means the deterministic result alone.** `aiOrDeterministic(candidate, base, runEgress)` returns an AI interpretation only when it passes `checkView`, explains the same result (`baseDigest`), keeps its status, headline and stats, and gives `runEgress` (where this run's input actually went) as its `egress`. Otherwise it returns `base`, never repairing a field or filling in a default. If a model provider received the input, the returned base's `egress` says so: abstaining can't take the input back. The base is checked as it would come back, so leave it room under the size limit for that change.
 
 **Why `_meta` and not `structuredContent`:** a tool's `structuredContent` is its data. Clients, agents and tests may compare it exactly. Keeping the view beside it means adding a view never changes a tool's data.
 
