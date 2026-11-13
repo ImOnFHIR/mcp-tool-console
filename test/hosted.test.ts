@@ -601,21 +601,22 @@ test("hosted hub: a portal that dropped our session shows as stopped, and Restar
   }
 });
 
+// The portal answers 200 with an application-level error whose code happens to be 404.
+const appError: typeof fetch = async (input, init) => {
+  const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+  if (body?.method === "tools/call")
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: body.id,
+        error: { code: 404, message: "no such thing" },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  return upstream.viaHttps(input, init);
+};
+
 test("hosted hub: a JSON-RPC error numbered 404 is not a lost session", async () => {
-  // The portal answers 200 with an application-level error whose code happens to be 404.
-  const appError: typeof fetch = async (input, init) => {
-    const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-    if (body?.method === "tools/call")
-      return new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: body.id,
-          error: { code: 404, message: "no such thing" },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    return upstream.viaHttps(input, init);
-  };
   const cfg = upstreamServerConfig(loadHostedConfig(goodEnv()));
   const h = new Hub([{ ...cfg, upstream: { ...cfg.upstream!, fetch: appError } }], {
     hosted: true,
@@ -691,6 +692,32 @@ test("catalog: reads the sample package", async () => {
       },
     ],
   });
+});
+
+test("catalog: lists v: 1 and v: 2 recorded runs and skips any other version", async () => {
+  const root = mkdtempSync(join(tmpdir(), "catalog-v2-"));
+  cpSync(join(PACKAGES, "sample"), join(root, "sample"), { recursive: true });
+  const first = JSON.parse(readFileSync(join(PACKAGES, "sample/runs/echo/first.json"), "utf8"));
+  const runs = join(root, "sample/runs/echo");
+  writeFileSync(
+    join(runs, "second.json"),
+    JSON.stringify({
+      ...first,
+      v: 2,
+      recorded: "recorded-run-2",
+      lockDigest: "unscored",
+      provenance: {},
+    }),
+  );
+  writeFileSync(
+    join(runs, "third.json"),
+    JSON.stringify({ ...first, v: 3, recorded: "recorded-run-3" }),
+  );
+  const c = await readCatalog(root);
+  assert.deepEqual(c.servers[0].runs.map((r) => r.recorded).toSorted(), [
+    "recorded-run-1",
+    "recorded-run-2",
+  ]);
 });
 
 test("catalog: the fixture's views are valid ToolView v1", () => {

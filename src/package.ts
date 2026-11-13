@@ -5,7 +5,7 @@
  *   package.json         { id, name, version, tools }
  *   tools/<tool>.json    the tools/list entry, `_meta` included
  *   views/<tool>/<preset>.json   the ToolView a preset produced (free, read-only tools only)
- *   runs/<tool>/<file>.json      recorded runs copied from --runs, exact shape checked
+ *   runs/<tool>/<file>.json      recorded runs copied from --runs, exact shape checked (v: 1 or 2)
  *   PROVENANCE.json      sha256 of every file, plus packageDigest
  *
  * Output is deterministic: sorted keys, sorted file lists, no timestamps, no commit SHA. A consumer
@@ -28,7 +28,7 @@ import { Hub } from "./console/hub.js";
 import { isCatalogId, isCatalogToolDir } from "./console/catalog.js";
 import { isFree } from "./console/http.js";
 import { META } from "./tool-meta.js";
-import { checkView } from "./ui/view.js";
+import { checkView, provenanceProblems } from "./ui/view.js";
 
 export class PackageError extends Error {}
 
@@ -59,17 +59,36 @@ export const isSafeName = (n: unknown): n is string =>
 export const isPackageFolder = (n: unknown): n is string =>
   isCatalogId(n) && !WINDOWS_RESERVED.test(n);
 
-const RUN_KEYS = [
-  "args",
-  "costUsd",
-  "lockDigest",
-  "model",
-  "recorded",
-  "structuredContent",
-  "tool",
-  "v",
-  "view",
-];
+/** The recorded-run envelope's exact keys, by version. v: 1 is read exactly as it always was. */
+export const RUN_KEYS: Record<1 | 2, readonly string[]> = {
+  1: [
+    "args",
+    "costUsd",
+    "lockDigest",
+    "model",
+    "recorded",
+    "structuredContent",
+    "tool",
+    "v",
+    "view",
+  ],
+  2: [
+    "args",
+    "costUsd",
+    "lockDigest",
+    "model",
+    "provenance",
+    "recorded",
+    "structuredContent",
+    "tool",
+    "v",
+    "view",
+  ],
+};
+/** A v: 2 recording that no eval lock scored says so, instead of carrying a made-up digest. */
+export const UNSCORED = "unscored";
+/** An eval lock's sha256, with or without the "sha256:" prefix (the decoy lab writes it bare). */
+const LOCK_DIGEST = /^(sha256:)?[0-9a-f]{64}$/;
 
 const isObj = (x: unknown): x is Record<string, any> =>
   !!x && typeof x === "object" && !Array.isArray(x);
@@ -164,12 +183,26 @@ export function readRuns(dir: string): RecordedRun[] {
       throw new PackageError(`runs/${e.name}: ${why}`);
     };
     if (!isObj(r)) bad("must be an object");
+    if (r.v !== 1 && r.v !== 2) bad("v must be 1 or 2");
+    const want = RUN_KEYS[r.v as 1 | 2];
     const keys = Object.keys(r).toSorted();
-    if (keys.join() !== RUN_KEYS.join())
-      bad(`keys must be exactly { ${RUN_KEYS.join(", ")} }, found { ${keys.join(", ")} }`);
-    if (r.v !== 1) bad("v must be 1");
+    if (keys.join() !== want.join())
+      bad(
+        `keys for v: ${r.v} must be exactly { ${want.join(", ")} }, found { ${keys.join(", ")} }`,
+      );
     for (const k of ["recorded", "tool", "model", "lockDigest"])
       if (typeof r[k] !== "string" || !r[k].trim()) bad(`${k} must be a non-empty string`);
+    if (r.v === 2) {
+      if (r.lockDigest !== UNSCORED && !LOCK_DIGEST.test(r.lockDigest))
+        bad(`lockDigest must be an eval lock's sha256 or "${UNSCORED}"`);
+      const pp = provenanceProblems(r.provenance);
+      if (pp.length) bad(`provenance: ${pp.join("; ")}`);
+      // The envelope's own model and cost are the provenance's, said once more for v: 1 readers.
+      if (r.provenance.model !== undefined && r.provenance.model !== r.model)
+        bad("provenance.model must match model");
+      if (r.provenance.costUsd !== undefined && r.provenance.costUsd !== r.costUsd)
+        bad("provenance.costUsd must match costUsd");
+    }
     if (!isSafeName(r.tool)) bad("tool is not a usable folder name");
     if (!isObj(r.args)) bad("args must be an object");
     if (!(typeof r.costUsd === "number" && Number.isFinite(r.costUsd) && r.costUsd >= 0))

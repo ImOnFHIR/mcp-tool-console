@@ -4,7 +4,7 @@
  *   <dir>/<server-id>/package.json
  *                    /tools/*.json            one tools/list entry each, with _meta
  *                    /views/**\/*.json         ToolView conformance views (not served yet)
- *                    /runs/<tool>/*.json      recorded runs { v: 1, recorded, tool, args, ... }
+ *                    /runs/<tool>/*.json      recorded runs { v: 1 or 2, recorded, tool, args, ... }
  *                    /PROVENANCE.json         (not served yet)
  *
  * Nothing a name says can leave the folder: ids and file names are matched against a short
@@ -49,7 +49,7 @@ async function names(rootReal: string, ...parts: string[]): Promise<string[]> {
   const dir = await inside(rootReal, ...parts);
   if (!dir) return [];
   try {
-    return (await readdir(dir)).sort();
+    return (await readdir(dir)).toSorted();
   } catch {
     return [];
   }
@@ -91,7 +91,7 @@ export async function readPackage(root: string, id: string): Promise<CatalogServ
     for (const f of await names(rootReal, id, "runs", tool)) {
       if (!JSON_FILE.test(f)) continue;
       const r = await readJson(rootReal, id, "runs", tool, f);
-      if (r?.v === 1 && typeof r.recorded === "string")
+      if ((r?.v === 1 || r?.v === 2) && typeof r.recorded === "string")
         runs.push({ tool, file: `${tool}/${f}`, recorded: r.recorded });
     }
   }
