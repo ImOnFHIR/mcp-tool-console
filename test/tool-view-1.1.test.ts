@@ -8,6 +8,7 @@ import {
   AI_LABEL,
   aiOrDeterministic,
   checkView,
+  LIMITS,
   SOURCES_SECTION_ID,
   type ToolView,
 } from "../src/ui/view.js";
@@ -20,6 +21,7 @@ const NEG = resolve("test/fixtures/tool-view/negative");
 const view = (f: string) => json(join(VIEWS, f)) as ToolView;
 const views = readdirSync(VIEWS).map((f) => [f, view(f)] as const);
 const machine = () => view("machine-written.json");
+const size = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length;
 const deterministic = () => view("deterministic-provenance.json");
 
 function schema() {
@@ -274,4 +276,12 @@ test("abstain: the result says where this run's input went, even when the model'
     () => aiOrDeterministic(machine(), base, "elsewhere" as never),
     /runEgress must be/,
   );
+  // The base is checked as it would come back: an egress that pushes it past the size limit is
+  // the producer's bug, found before any view is returned.
+  const big = deterministic();
+  big.footnote = "";
+  big.footnote = "x".repeat(LIMITS.viewBytes - 5 - size(big));
+  assert.deepEqual(checkView(big), [], "the padded base fits with egress none");
+  assert.equal(aiOrDeterministic(machine(), big, "none").abstained, false, "fits: no throw");
+  assert.throws(() => aiOrDeterministic(machine(), big, "model-provider"), /keep it under/);
 });

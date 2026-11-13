@@ -301,11 +301,16 @@ export interface Chosen {
 export function aiOrDeterministic(candidate: unknown, base: ToolView, runEgress: Egress): Chosen {
   if (!EGRESS.includes(runEgress))
     throw new Error(`aiOrDeterministic: runEgress must be one of ${EGRESS.join(", ")}`);
-  const baseProblems = checkView(base);
   const bp = base.provenance;
   if (bp?.mode !== "deterministic")
-    baseProblems.push("the base needs provenance with mode deterministic");
-  if (baseProblems.length || !bp)
+    throw new Error(
+      "aiOrDeterministic: the base is not a valid deterministic view: it needs provenance with mode deterministic",
+    );
+  // Check the base as it would come back, egress included: it must stay a valid view (size too).
+  const fallback: ToolView =
+    bp.egress === runEgress ? base : { ...base, provenance: { ...bp, egress: runEgress } };
+  const baseProblems = checkView(fallback);
+  if (baseProblems.length)
     throw new Error(
       `aiOrDeterministic: the base is not a valid deterministic view: ${baseProblems.join("; ")}`,
     );
@@ -326,8 +331,6 @@ export function aiOrDeterministic(candidate: unknown, base: ToolView, runEgress:
         problems.push("the candidate changes the stats");
     }
   }
-  const fallback =
-    bp.egress === runEgress ? base : { ...base, provenance: { ...bp, egress: runEgress } };
   return problems.length
     ? { view: fallback, abstained: true, problems }
     : { view: c, abstained: false, problems };
