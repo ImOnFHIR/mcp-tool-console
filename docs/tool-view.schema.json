@@ -37,7 +37,7 @@
       "required": ["mode", "egress", "baseDigest", "corpusDigest", "passageIds", "evidenceType"],
       "properties": {
         "mode": { "type": "string", "minLength": 1, "description": "\"deterministic\": the tool computed every word. \"model\": a language model wrote some. Any other value is treated as \"model\"." },
-        "egress": { "enum": ["none", "model-provider"], "description": "Who outside the tool received this run's input to make the result." },
+        "egress": { "enum": ["none", "model-provider"], "description": "Who outside the tool received this run's input. It describes the run, not who wrote the words." },
         "baseDigest": { "$ref": "#/$defs/digest", "description": "sha256 of the deterministic result this view reports or explains." },
         "corpusDigest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "const": "none" }], "description": "sha256 of the committed corpus or pack the passages come from, or \"none\"." },
         "passageIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
@@ -48,7 +48,6 @@
         "at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2}))?$" }
       },
       "if": { "properties": { "mode": { "const": "deterministic" } } },
-      "then": { "properties": { "egress": { "const": "none" } } },
       "else": { "required": ["model", "at"] }
     }
   },

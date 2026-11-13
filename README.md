@@ -175,7 +175,7 @@ Still `v: 1`: these fields are optional, and a renderer written before them stil
 | Field | What it is |
 |---|---|
 | `mode` | `"deterministic"` (the tool computed every word) or `"model"` (a language model wrote some) |
-| `egress` | Who outside the tool received this run's input: `"none"` or `"model-provider"`. A deterministic view can't say `"model-provider"` |
+| `egress` | Who outside the tool received this run's input: `"none"` or `"model-provider"`. It describes the run, not who wrote the words: a deterministic result returned after a model was tried still says `"model-provider"` |
 | `baseDigest` | `sha256:` of the deterministic result this view reports or explains |
 | `corpusDigest` | `sha256:` of the committed corpus or pack the passages come from, or `"none"` |
 | `passageIds[]` | Every passage the view cites |
@@ -185,7 +185,7 @@ Still `v: 1`: these fields are optional, and a renderer written before them stil
 
 `checkView` enforces all of this. `docs/tool-view.schema.json` carries what a JSON Schema can express; the cross-field rules (model and date in the banner, sources, refs that resolve) are `checkView`'s alone. The renderer shows the provenance in one line of plain words and the refs after each bullet's text.
 
-**Abstain means the deterministic result alone.** `aiOrDeterministic(candidate, base)` returns a machine-written view only when it passes `checkView`, explains the same result (`baseDigest`) and keeps its status, headline and stats. Otherwise it returns `base` untouched. It never repairs a field or fills in a default.
+**Abstain means the deterministic result alone.** `aiOrDeterministic(candidate, base, runEgress)` returns a machine-written view only when it passes `checkView`, explains the same result (`baseDigest`), keeps its status, headline and stats, and gives `runEgress` (where this run's input actually went) as its `egress`. Otherwise it returns `base`, never repairing a field or filling in a default. If a model provider received the input, the returned base's `egress` says so: abstaining can't take the input back.
 
 **Why `_meta` and not `structuredContent`:** a tool's `structuredContent` is its data. Clients, agents and tests may compare it exactly. Keeping the view beside it means adding a view never changes a tool's data.
 

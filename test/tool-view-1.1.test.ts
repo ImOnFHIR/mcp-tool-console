@@ -46,10 +46,6 @@ const NEGATIVE: Record<string, { schemaPath: string | null; problem: RegExp }> =
     schemaPath: null,
     problem: /banner must name provenance\.model/,
   },
-  "deterministic-sent-to-model": {
-    schemaPath: "/provenance/egress",
-    problem: /deterministic view can't have sent its input to a model provider/,
-  },
   "bad-base-digest": { schemaPath: "/provenance/baseDigest", problem: /baseDigest must be/ },
   "ai-impossible-date": { schemaPath: null, problem: /provenance\.at must be an ISO date/ },
   "passage-not-in-sources": {
@@ -140,7 +136,15 @@ test("provenance line: plain words for who wrote it, the evidence and where the 
     "Worked out by the tool; no model wrote it · evidence: validator-output · your input went to no one outside the tool",
   );
   const sent = { ...machine().provenance!, egress: "model-provider" as const, costUsd: undefined };
-  assert.match(provenanceLine(sent), /your input was sent to the model's provider$/);
+  assert.match(provenanceLine(sent), /your input was sent to a model provider$/);
+  // Egress describes the run: a deterministic result after a model was tried is valid and says so.
+  const fallback = deterministic();
+  fallback.provenance!.egress = "model-provider";
+  assert.deepEqual(checkView(fallback), []);
+  assert.match(
+    provenanceLine(fallback.provenance!),
+    /no model wrote it .* your input was sent to a model provider$/,
+  );
 });
 
 test("a 1.0 renderer still shows the machine-written label and every cited passage", () => {
@@ -175,13 +179,21 @@ test("render: hostile refs and provenance come out escaped", () => {
 test("abstain: a model-written view that fails any check gives back the deterministic result alone", () => {
   const base = deterministic();
   // A valid explanation of this exact result is returned as is.
-  const ok = aiOrDeterministic(machine(), base);
+  const ok = aiOrDeterministic(machine(), base, "none");
   assert.equal(ok.abstained, false);
   assert.deepEqual(ok.view, machine());
   // Key order is not a change: the package writer sorts keys.
   const reordered = machine();
   reordered.stats = reordered.stats!.map(({ label, value, status }) => ({ status, value, label }));
-  assert.equal(aiOrDeterministic(reordered, base).abstained, false, "reordered stat keys");
+  assert.equal(aiOrDeterministic(reordered, base, "none").abstained, false, "reordered stat keys");
+  // A key set to undefined is no key at all, as in JSON.
+  const withUndefined = deterministic();
+  withUndefined.stats = withUndefined.stats!.map((s) => ({ ...s, note: undefined }));
+  assert.equal(
+    aiOrDeterministic(machine(), withUndefined, "none").abstained,
+    false,
+    "undefined keys",
+  );
   const cases: [string, (v: ToolView) => unknown, RegExp][] = [
     ["no label", (v) => ({ ...v, banner: undefined }), /banner must start/],
     ["not an object", () => "explanation", /not an object/],
@@ -213,7 +225,7 @@ test("abstain: a model-written view that fails any check gives back the determin
     ],
   ];
   for (const [name, change, why] of cases) {
-    const r = aiOrDeterministic(change(machine()), base);
+    const r = aiOrDeterministic(change(machine()), base, "none");
     assert.equal(r.abstained, true, name);
     assert.ok(
       r.problems.some((p) => why.test(p)),
@@ -224,5 +236,42 @@ test("abstain: a model-written view that fails any check gives back the determin
     assert.deepEqual(r.view, deterministic(), name);
   }
   // A base that isn't a valid deterministic view is the producer's bug: it throws, it doesn't pick.
-  assert.throws(() => aiOrDeterministic(machine(), machine()), /not a valid deterministic view/);
+  assert.throws(
+    () => aiOrDeterministic(machine(), machine(), "none"),
+    /not a valid deterministic view/,
+  );
+});
+
+test("abstain: the result says where this run's input went, even when the model's view is rejected", () => {
+  const base = deterministic();
+  const sentView = (): ToolView => {
+    const v = machine();
+    v.provenance!.egress = "model-provider";
+    return v;
+  };
+  // Accepted: the candidate's egress is the run's.
+  assert.equal(aiOrDeterministic(sentView(), base, "model-provider").abstained, false);
+  // Rejected after the input reached a provider: the base comes back saying so, nothing else changed.
+  const r = aiOrDeterministic(
+    { ...sentView(), headline: "No rule failed." },
+    base,
+    "model-provider",
+  );
+  assert.equal(r.abstained, true);
+  assert.equal(r.view.provenance!.egress, "model-provider");
+  assert.deepEqual(
+    { ...r.view, provenance: { ...r.view.provenance!, egress: "none" } },
+    deterministic(),
+  );
+  assert.equal(base.provenance!.egress, "none", "the caller's base is not modified");
+  assert.deepEqual(checkView(r.view), []);
+  assert.match(renderView(r.view), /your input was sent to a model provider/);
+  // A candidate that hides where the input went is rejected.
+  const hides = aiOrDeterministic(machine(), base, "model-provider");
+  assert.equal(hides.abstained, true);
+  assert.ok(hides.problems.some((p) => /egress is not where this run's input went/.test(p)));
+  assert.throws(
+    () => aiOrDeterministic(machine(), base, "elsewhere" as never),
+    /runEgress must be/,
+  );
 });

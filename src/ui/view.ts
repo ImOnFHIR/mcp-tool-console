@@ -19,6 +19,7 @@ export const AI_LABEL = "Machine-written";
 /** The section that lists every cited passage, so a 1.0 renderer shows them as ordinary bullets. */
 export const SOURCES_SECTION_ID = "sources";
 export const EGRESS = ["none", "model-provider"] as const;
+export type Egress = (typeof EGRESS)[number];
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/;
 
@@ -31,6 +32,12 @@ function isIsoDate(s: unknown): boolean {
   return day.getUTCFullYear() === y && day.getUTCMonth() === mo - 1 && day.getUTCDate() === d;
 }
 
+/** An object's keys, sorted, without those set to undefined: JSON drops them, so they aren't data. */
+const definedKeys = (o: Record<string, any>) =>
+  Object.keys(o)
+    .filter((k) => o[k] !== undefined)
+    .toSorted();
+
 /** The same data, whatever order object keys are in (arrays keep their order). */
 function sameData(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) || Array.isArray(b))
@@ -41,8 +48,8 @@ function sameData(a: unknown, b: unknown): boolean {
       a.every((x, i) => sameData(x, b[i]))
     );
   if (isObj(a) && isObj(b)) {
-    const ka = Object.keys(a).toSorted();
-    const kb = Object.keys(b).toSorted();
+    const ka = definedKeys(a);
+    const kb = definedKeys(b);
     return ka.join("\0") === kb.join("\0") && ka.every((k) => sameData(a[k], b[k]));
   }
   return a === b;
@@ -55,8 +62,11 @@ export interface Provenance {
    * Any value other than "deterministic" is treated as "model", so a newer mode can't skip the label.
    */
   mode: "deterministic" | "model";
-  /** Who outside the tool received this run's input to make the result. */
-  egress: (typeof EGRESS)[number];
+  /**
+   * Who outside the tool received this run's input. It describes the run, not who wrote the words:
+   * a deterministic result returned after a model was tried still says "model-provider".
+   */
+  egress: Egress;
   /** sha256 of the deterministic result this view reports or explains: "sha256:<64 hex>". */
   baseDigest: string;
   /** sha256 of the committed corpus or pack the cited passages come from, or "none". */
@@ -260,8 +270,6 @@ function checkProvenance(
       if (typeof pv.at === "string" && !v.banner.includes(pv.at.slice(0, 10)))
         p.push("a machine-written view's banner must give the date in provenance.at");
     }
-  } else if (pv.egress === "model-provider") {
-    p.push("a deterministic view can't have sent its input to a model provider");
   }
 
   if (!ids) return;
@@ -284,11 +292,15 @@ export interface Chosen {
 
 /**
  * Abstain means: return the deterministic result alone. A model-written view is returned only when
- * it passes every check, explains this exact base result (same `baseDigest`) and keeps its verdict
- * (status, headline and stats unchanged). Otherwise the base comes back untouched. Nothing from the
- * candidate is repaired, clamped to a default or merged in.
+ * it passes every check, explains this exact base result (same `baseDigest`), keeps its verdict
+ * (status, headline and stats unchanged) and says where this run's input went (`runEgress`).
+ * Otherwise the base comes back, with nothing from the candidate repaired, clamped to a default or
+ * merged in. One thing changes on the way back: when a model provider received the input, the
+ * base's `egress` says so, because abstaining can't take the input back.
  */
-export function aiOrDeterministic(candidate: unknown, base: ToolView): Chosen {
+export function aiOrDeterministic(candidate: unknown, base: ToolView, runEgress: Egress): Chosen {
+  if (!EGRESS.includes(runEgress))
+    throw new Error(`aiOrDeterministic: runEgress must be one of ${EGRESS.join(", ")}`);
   const baseProblems = checkView(base);
   const bp = base.provenance;
   if (bp?.mode !== "deterministic")
@@ -304,6 +316,8 @@ export function aiOrDeterministic(candidate: unknown, base: ToolView): Chosen {
     else if (c.provenance.mode === "deterministic")
       problems.push("the candidate says no model wrote it");
     else {
+      if (c.provenance.egress !== runEgress)
+        problems.push("the candidate's egress is not where this run's input went");
       if (c.provenance.baseDigest !== bp.baseDigest)
         problems.push("the candidate explains a different result (baseDigest differs)");
       if (c.status !== base.status) problems.push("the candidate changes the status");
@@ -312,7 +326,9 @@ export function aiOrDeterministic(candidate: unknown, base: ToolView): Chosen {
         problems.push("the candidate changes the stats");
     }
   }
+  const fallback =
+    bp.egress === runEgress ? base : { ...base, provenance: { ...bp, egress: runEgress } };
   return problems.length
-    ? { view: base, abstained: true, problems }
+    ? { view: fallback, abstained: true, problems }
     : { view: c, abstained: false, problems };
 }

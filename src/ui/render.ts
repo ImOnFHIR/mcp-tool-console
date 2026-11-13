@@ -64,7 +64,7 @@ function bullets(items: Bullet[]): string {
 
 const EGRESS_WORDS: Record<string, string> = {
   none: "your input went to no one outside the tool",
-  "model-provider": "your input was sent to the model's provider",
+  "model-provider": "your input was sent to a model provider",
 };
 
 /**
