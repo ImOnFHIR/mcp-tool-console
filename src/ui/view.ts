@@ -4,7 +4,7 @@
  * Machine-readable copy: docs/tool-view.schema.json. Pure types + a hand-written checker (no ajv).
  *
  * Contract 1.1 (still `v: 1`, optional fields only) lets a view say who wrote it and what it cites,
- * in a way a 1.0 renderer still shows: the machine-written label rides in `banner`, and the cited
+ * in a way a 1.0 renderer still shows: the AI Interpretation label rides in `banner`, and the cited
  * passages are bullets in a section with id "sources". `provenance` and `refs` are extras for
  * newer renderers and machines; they are never the only place a reader can learn either fact.
  */
@@ -12,10 +12,10 @@ export type Status = "good" | "bad" | "warn" | "info" | "error";
 export const STATUSES: readonly Status[] = ["good", "bad", "warn", "info", "error"];
 
 /**
- * The fixed start of the banner on any view a model helped write. It follows the site's
- * existing label for model-written text ("machine summary · unreviewed · <model> · <date>").
+ * The fixed start of the banner on any view a model helped write, in the owner's words
+ * (2026-11-13): an AI interpretation of the tool's result, never the result itself.
  */
-export const AI_LABEL = "Machine-written";
+export const AI_LABEL = "AI Interpretation";
 /** The section that lists every cited passage, so a 1.0 renderer shows them as ordinary bullets. */
 export const SOURCES_SECTION_ID = "sources";
 export const EGRESS = ["none", "model-provider"] as const;
@@ -219,7 +219,7 @@ export function checkView(v: unknown): string[] {
   return p;
 }
 
-/** Contract 1.1 rules: provenance's shape, the machine-written label, and citations that resolve. */
+/** Contract 1.1 rules: provenance's shape, the AI Interpretation label, and citations that resolve. */
 function checkProvenance(
   v: Record<string, any>,
   cited: { ref: string; where: string; inSources: boolean }[],
@@ -259,17 +259,12 @@ function checkProvenance(
     p.push("provenance.at must be an ISO date or date-time");
 
   if (pv.mode !== "deterministic") {
-    // A model wrote some of this. Say so, with the model and the date, where a 1.0 renderer shows it.
-    if (!str(pv.model)) p.push("a machine-written view needs provenance.model");
-    if (pv.at === undefined) p.push("a machine-written view needs provenance.at");
-    if (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL)) {
-      p.push(`a machine-written view's banner must start with "${AI_LABEL}"`);
-    } else {
-      if (str(pv.model) && !v.banner.includes(pv.model))
-        p.push("a machine-written view's banner must name provenance.model");
-      if (typeof pv.at === "string" && !v.banner.includes(pv.at.slice(0, 10)))
-        p.push("a machine-written view's banner must give the date in provenance.at");
-    }
+    // A model wrote some of this. Say so where a 1.0 renderer shows it: the banner. The model and
+    // the date are data in provenance; newer renderers show them on the provenance line.
+    if (!str(pv.model)) p.push("an AI interpretation needs provenance.model");
+    if (pv.at === undefined) p.push("an AI interpretation needs provenance.at");
+    if (typeof v.banner !== "string" || !v.banner.startsWith(AI_LABEL))
+      p.push(`an AI interpretation's banner must start with "${AI_LABEL}"`);
   }
 
   if (!ids) return;

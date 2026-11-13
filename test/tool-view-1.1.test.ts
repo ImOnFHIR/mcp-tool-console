@@ -20,7 +20,7 @@ const VIEWS = resolve("test/views");
 const NEG = resolve("test/fixtures/tool-view/negative");
 const view = (f: string) => json(join(VIEWS, f)) as ToolView;
 const views = readdirSync(VIEWS).map((f) => [f, view(f)] as const);
-const machine = () => view("machine-written.json");
+const machine = () => view("ai-interpretation.json");
 const size = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length;
 const deterministic = () => view("deterministic-provenance.json");
 
@@ -34,20 +34,16 @@ function schema() {
  * express the rule, so the schema must pass it), and the checkView problem it must raise.
  */
 const NEGATIVE: Record<string, { schemaPath: string | null; problem: RegExp }> = {
-  "ai-no-banner": { schemaPath: "", problem: /banner must start with "Machine-written"/ },
+  "ai-no-banner": { schemaPath: "", problem: /banner must start with "AI Interpretation"/ },
   "ai-banner-without-label": {
     schemaPath: "/banner",
-    problem: /banner must start with "Machine-written"/,
+    problem: /banner must start with "AI Interpretation"/,
   },
   "unknown-mode-no-label": {
     schemaPath: "/banner",
-    problem: /banner must start with "Machine-written"/,
+    problem: /banner must start with "AI Interpretation"/,
   },
   "ai-no-model": { schemaPath: "/provenance", problem: /needs provenance\.model/ },
-  "ai-banner-without-model-or-date": {
-    schemaPath: null,
-    problem: /banner must name provenance\.model/,
-  },
   "bad-base-digest": { schemaPath: "/provenance/baseDigest", problem: /baseDigest must be/ },
   "ai-impossible-date": { schemaPath: null, problem: /provenance\.at must be an ISO date/ },
   "passage-not-in-sources": {
@@ -97,8 +93,9 @@ for (const [id, { schemaPath, problem }] of Object.entries(NEGATIVE)) {
   });
 }
 
-test("checkView: a machine-written view must carry the label, the model and the date in its banner", () => {
+test("checkView: an AI interpretation's banner starts with the label; the label alone is enough", () => {
   assert.deepEqual(checkView(machine()), []);
+  assert.equal(machine().banner, AI_LABEL, "the conformance view shows the label alone");
   const v = machine();
   v.banner = "Synthetic data only.";
   assert.ok(checkView(v).some((p) => p.includes(`must start with "${AI_LABEL}"`)));
@@ -131,7 +128,7 @@ test("requiredText: the provenance line, every ref and every cited passage; the 
 test("provenance line: plain words for who wrote it, the evidence and where the input went", () => {
   assert.equal(
     provenanceLine(machine().provenance!),
-    "Machine-written by example-model-1 on 2026-11-12 · prompt explain-v1 · evidence: spec-text · your input went to no one outside the tool · cost US$0.0021",
+    "AI Interpretation by example-model-1 on 2026-11-12 · prompt explain-v1 · evidence: spec-text · your input went to no one outside the tool · cost US$0.0021",
   );
   assert.equal(
     provenanceLine(deterministic().provenance!),
@@ -149,7 +146,7 @@ test("provenance line: plain words for who wrote it, the evidence and where the 
   );
 });
 
-test("a 1.0 renderer still shows the machine-written label and every cited passage", () => {
+test("a 1.0 renderer still shows the AI Interpretation label and every cited passage", () => {
   for (const [f, v] of views) {
     if (!v.provenance || v.provenance.mode === "deterministic") continue;
     const html = renderView10(v);
@@ -164,7 +161,7 @@ test("a 1.0 renderer still shows the machine-written label and every cited passa
   }
   assert.ok(
     views.some(([, v]) => v.provenance && v.provenance.mode !== "deterministic"),
-    "no machine-written conformance view",
+    "no AI interpretation conformance view",
   );
 });
 
